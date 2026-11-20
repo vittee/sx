@@ -40,10 +40,16 @@ fn main() -> ExitCode {
         _ => {}
     }
 
+    let given = args.len();
     let ssh_args = prepare_args(args);
     if dry_run {
         println!("ssh {}", ssh_args.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>().join(" "));
         return ExitCode::SUCCESS;
+    }
+    if ssh_args.len() > given {
+        // The remote side rewrites this line to "connected to <host>" once the login succeeds.
+        let host = injectable_host(&ssh_args[ssh_args.len() - given..]).unwrap_or_default();
+        eprintln!("sx: connecting to {host} ... (Ctrl-C to abort)");
     }
     ExitCode::from(run_ssh(&ssh_args))
 }
