@@ -12,6 +12,7 @@ Details are under [How it works](#how-it-works).
 ## What you get
 
 - Your prompt and aliases on every server, from small snippet files you keep locally.
+- Profiles that choose which snippets are sent, with a profile for each host or none at all.
 - The same arguments as `ssh`.
 
 ## Quick start
@@ -37,17 +38,43 @@ sx --help
 ```
 
 `sx` runs plain `ssh` when you pass a remote command (`sx host ls`),
-any of `-N -T -W -O -Q -V -G -s -f -n`, or `-o RemoteCommand`.
+any of `-N -T -W -O -Q -V -G -s -f -n`, or `-o RemoteCommand`, and when the host's profile is off.
 It also runs plain `ssh`, without a message, when there are no snippets or they are all empty.
 
 ## Config
 
 `sx` keeps its files in `$SX_HOME`, or `~/.config/sx` when that is not set.
-Each `snippets/<name>.sh` is a piece of plain bash:
-your prompt, aliases and anything else you want in the server's shell.
-`sx` joins the snippets in name order on every login,
-so names like `10-prompt` and `20-aliases` control the order.
-The first run creates a sample `20-aliases.sh`, and `sx init` does the same on request.
+
+- `snippets/<name>.sh` is a piece of plain bash:
+  your prompt, aliases and anything else you want in the server's shell.
+  A profile's snippets are joined in name order on every login,
+  so names like `10-prompt` and `20-aliases` control the order.
+- `config.toml` has the profiles and each host's profile.
+
+The first run creates a sample `20-aliases.sh` and a `default` profile that sends it.
+`sx init` does the same on request.
+A snippet is sent only when a profile lists it, so add new snippets to a profile.
+
+```toml
+default_profile = "default"
+
+[profiles.default]
+snippets = ["10-prompt", "20-aliases"]
+
+[profiles.work]
+snippets = ["20-aliases"]
+
+[hosts.box]
+profile = "work"
+
+[hosts.legacy]
+profile = "-"       # plain ssh for this host
+```
+
+A host uses the profile named under `[hosts.<name>]`, else `default_profile`.
+The name is the host as you type it, without a `user@` prefix.
+The profile `-` turns `sx` off for that host.
+A host that names a profile that does not exist uses `default_profile`.
 
 ## How it works
 

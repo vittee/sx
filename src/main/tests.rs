@@ -91,3 +91,13 @@ fn argv_puts_our_options_first() {
     assert!(argv[5].starts_with("RemoteCommand="));
     assert_eq!(argv.last().unwrap(), "host");
 }
+
+#[test]
+fn profile_lookup_tries_exact_then_without_user() {
+    let mut cfg = config::Config::default();
+    cfg.profiles.insert("default".into(), config::Profile::default());
+    cfg.hosts.entry("box".into()).or_default().profile = Some(config::PROFILE_OFF.into());
+    assert_eq!(profile_for_target(&cfg, "box"), None);
+    assert_eq!(profile_for_target(&cfg, "me@box"), None);
+    assert_eq!(profile_for_target(&cfg, "other"), Some("default"));
+}

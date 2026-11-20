@@ -14,9 +14,9 @@ usage:
   sx --dry-run [...]     print the ssh command instead of running it
   sx --help
 
-config: $SX_HOME, else ~/.config/sx (snippets/*.sh)
+config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
 sx skips injection (plain ssh) when you pass a remote command, -N, -T, -W, -O, -Q, -V, -G, -s,
--f, -n, or -o RemoteCommand.";
+-f, -n, or -o RemoteCommand, or when the host's profile is off.";
 
 /// ssh options that take a value.
 const OPTS_WITH_VALUE: &str = "BbcDEeFIiJLlmOopQRSWw";
@@ -69,7 +69,7 @@ fn run_ssh(args: &[String]) -> u8 {
 /// Problems (unreadable config, empty rc) fall back to plain ssh with a message on stderr.
 fn prepare_args(args: Vec<String>) -> Vec<String> {
     let Some(host) = injectable_host(&args) else { return args };
-    match load_payload() {
+    match load_payload(&host) {
         Ok(Some(payload)) => build_argv(args, &host, &payload),
         Ok(None) => args,
         Err(msg) => {
@@ -79,13 +79,15 @@ fn prepare_args(args: Vec<String>) -> Vec<String> {
     }
 }
 
-/// Encoded payload of all snippets, or `None` when there are none.
-fn load_payload() -> Result<Option<String>, String> {
+/// Encoded payload for `host`, or `None` when its profile is off or has nothing in it.
+fn load_payload(host: &str) -> Result<Option<String>, String> {
     let dir = config::config_dir().ok_or("cannot find home directory")?;
-    if config::ensure_initialized(&dir).map_err(|e| e.to_string())? {
+    let (cfg, created) = config::ensure_initialized(&dir).map_err(|e| e.to_string())?;
+    if created {
         eprintln!("sx: created sample snippets in {}", dir.display());
     }
-    let rc = config::build_rc(&dir);
+    let Some(profile) = profile_for_target(&cfg, host) else { return Ok(None) };
+    let rc = config::build_rc(&dir, &cfg, profile);
     if rc.trim().is_empty() {
         return Ok(None);
     }
@@ -106,14 +108,27 @@ fn init() -> ExitCode {
         return ExitCode::FAILURE;
     };
     match config::ensure_initialized(&dir) {
-        Ok(true) => println!("sx: created sample snippets in {}", dir.display()),
-        Ok(false) => println!("sx: {} already set up, left unchanged", dir.display()),
+        Ok((_, true)) => println!("sx: created sample snippets in {}", dir.display()),
+        Ok((_, false)) => println!("sx: {} already set up, left unchanged", dir.display()),
         Err(e) => {
             eprintln!("sx: {e}");
             return ExitCode::FAILURE;
         }
     }
     ExitCode::SUCCESS
+}
+
+/// The name a host has in `config.toml`: as typed if known there, else without a `user@` prefix.
+fn host_key(cfg: &config::Config, host: &str) -> String {
+    if cfg.hosts.contains_key(host) {
+        return host.to_string();
+    }
+    host.rsplit_once('@').map_or(host, |(_, h)| h).to_string()
+}
+
+/// Looks up the profile by the host exactly as typed, then without a `user@` prefix.
+fn profile_for_target<'a>(cfg: &'a config::Config, host: &str) -> Option<&'a str> {
+    cfg.profile_for(&host_key(cfg, host))
 }
 
 /// Our options go first: ssh keeps the first value it sees for an option.
