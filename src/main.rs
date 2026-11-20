@@ -1,10 +1,8 @@
 mod bootstrap;
+mod config;
 mod payload;
 
 use std::env;
-use std::fs;
-use std::io;
-use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 const HELP: &str = "\
@@ -12,10 +10,11 @@ sx: run ssh with your own shell rc (prompt, aliases) on the server.
 
 usage:
   sx [ssh args] host     like ssh, but the remote bash loads your rc
+  sx init                create the sample snippet
   sx --dry-run [...]     print the ssh command instead of running it
   sx --help
 
-rc file: $SX_HOME/rc, else ~/.config/sx/rc
+config: $SX_HOME, else ~/.config/sx (snippets/*.sh)
 sx skips injection (plain ssh) when you pass a remote command, -N, -T, -W, -O, -Q, -V, -G, -s,
 -f, -n, or -o RemoteCommand.";
 
@@ -33,6 +32,7 @@ fn main() -> ExitCode {
             println!("{HELP}");
             return ExitCode::SUCCESS;
         }
+        Some("init") => return init(),
         Some("--dry-run") => {
             dry_run = true;
             args.remove(0);
@@ -65,17 +65,8 @@ fn run_ssh(args: &[String]) -> u8 {
     }
 }
 
-/// `$SX_HOME/rc`, else `~/.config/sx/rc`.
-fn rc_path() -> Option<PathBuf> {
-    if let Some(dir) = env::var_os("SX_HOME") {
-        return Some(PathBuf::from(dir).join("rc"));
-    }
-    let home = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".config").join("sx").join("rc"))
-}
-
 /// Adds the sx options to `args` when this is a plain interactive login to a host.
-/// Problems (no rc file, empty rc) fall back to plain ssh with a message on stderr.
+/// Problems (unreadable config, empty rc) fall back to plain ssh with a message on stderr.
 fn prepare_args(args: Vec<String>) -> Vec<String> {
     let Some(host) = injectable_host(&args) else { return args };
     match load_payload() {
@@ -88,16 +79,13 @@ fn prepare_args(args: Vec<String>) -> Vec<String> {
     }
 }
 
-/// Encoded payload of the rc file, or `None` when the file is empty.
+/// Encoded payload of all snippets, or `None` when there are none.
 fn load_payload() -> Result<Option<String>, String> {
-    let path = rc_path().ok_or("cannot find home directory")?;
-    let rc = match fs::read_to_string(&path) {
-        Ok(rc) => rc,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Err(format!("no rc file at {}", path.display()));
-        }
-        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
-    };
+    let dir = config::config_dir().ok_or("cannot find home directory")?;
+    if config::ensure_initialized(&dir).map_err(|e| e.to_string())? {
+        eprintln!("sx: created sample snippets in {}", dir.display());
+    }
+    let rc = config::build_rc(&dir);
     if rc.trim().is_empty() {
         return Ok(None);
     }
@@ -110,6 +98,22 @@ fn load_payload() -> Result<Option<String>, String> {
         );
     }
     Ok(Some(encoded))
+}
+
+fn init() -> ExitCode {
+    let Some(dir) = config::config_dir() else {
+        eprintln!("sx: cannot find home directory");
+        return ExitCode::FAILURE;
+    };
+    match config::ensure_initialized(&dir) {
+        Ok(true) => println!("sx: created sample snippets in {}", dir.display()),
+        Ok(false) => println!("sx: {} already set up, left unchanged", dir.display()),
+        Err(e) => {
+            eprintln!("sx: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// Our options go first: ssh keeps the first value it sees for an option.

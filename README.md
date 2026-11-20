@@ -11,42 +11,43 @@ Details are under [How it works](#how-it-works).
 
 ## What you get
 
-- Your prompt and aliases on every server, from an rc file you keep locally.
+- Your prompt and aliases on every server, from small snippet files you keep locally.
 - The same arguments as `ssh`.
 
 ## Quick start
 
 ```sh
 cargo build --release   # binary: target/release/sx
-mkdir -p ~/.config/sx
-cat > ~/.config/sx/rc <<'RC'
-export PS1='\u@\h:\w\$ '
-alias ll='ls -l'
-RC
-sx user@host            # log in with your rc
+sx init                 # create a sample snippet in ~/.config/sx/snippets
+sx user@host            # log in with your snippets
 ```
+
+Put your prompt and aliases in `~/.config/sx/snippets/*.sh`, for example `10-prompt.sh`.
 
 Requires bash on the server, see [Limits](#limits).
 
 ## Usage
 
 ```sh
-sx user@host            # same arguments as ssh, with your rc injected
+sx user@host            # same arguments as ssh, with your snippets injected
 sx -p 2222 -i key host
 sx --dry-run host       # print the ssh command, do not run it
+sx init                 # create the sample snippet
 sx --help
 ```
 
 `sx` runs plain `ssh` when you pass a remote command (`sx host ls`),
 any of `-N -T -W -O -Q -V -G -s -f -n`, or `-o RemoteCommand`.
-It also runs plain `ssh`, after a message on stderr, when the rc file is missing,
-and without a message when it is empty.
+It also runs plain `ssh`, without a message, when there are no snippets or they are all empty.
 
 ## Config
 
-`sx` reads one file: `$SX_HOME/rc`, or `~/.config/sx/rc` when `SX_HOME` is not set.
-It is plain bash: your prompt, aliases and anything else you want in the server's shell.
-`sx` reads it on every login.
+`sx` keeps its files in `$SX_HOME`, or `~/.config/sx` when that is not set.
+Each `snippets/<name>.sh` is a piece of plain bash:
+your prompt, aliases and anything else you want in the server's shell.
+`sx` joins the snippets in name order on every login,
+so names like `10-prompt` and `20-aliases` control the order.
+The first run creates a sample `20-aliases.sh`, and `sx init` does the same on request.
 
 ## How it works
 
