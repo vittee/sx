@@ -3,6 +3,7 @@ mod config;
 mod history;
 mod log;
 mod payload;
+mod prompt;
 mod ssh_config;
 
 use std::env;
