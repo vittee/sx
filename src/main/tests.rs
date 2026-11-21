@@ -67,28 +67,29 @@ fn no_args_skips() {
 fn real_ssh_parses_our_options() {
     let Ok(out) = Command::new("ssh")
         .arg("-G")
-        .args(build_argv(vec!["testhost".into()], "testhost", "UEFZTE9BRA=="))
+        .args(build_argv(vec!["testhost".into()], "UEFZTE9BRA=="))
         .output()
     else {
         return; // ssh not installed
     };
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("setenv LC_MONETARY=UEFZTE9BRA=="), "{text}");
+    assert!(!text.contains("setenv"), "{text}");
     assert!(text.contains("requesttty force"), "{text}");
     assert!(
-        text.lines().any(|l| l == format!("remotecommand {}", bootstrap::remote_command("testhost"))),
+        text.lines().any(|l| l == format!("remotecommand {}", bootstrap::remote_command("testhost", "UEFZTE9BRA=="))),
         "{text}"
     );
 }
 
 #[test]
 fn argv_puts_our_options_first() {
-    let argv = build_argv(vec!["host".into()], "host", "PAYLOAD");
+    let argv = build_argv(vec!["host".into()], "PAYLOAD");
     assert_eq!(argv[0], "-o");
-    assert_eq!(argv[1], "SetEnv=LC_MONETARY=PAYLOAD");
-    assert_eq!(argv[3], "RequestTTY=force");
-    assert!(argv[5].starts_with("RemoteCommand="));
+    assert_eq!(argv[1], "RequestTTY=force");
+    assert_eq!(argv[2], "-o");
+    assert!(argv[3].starts_with("RemoteCommand="));
+    assert!(argv[3].contains("P=PAYLOAD;"));
     assert_eq!(argv.last().unwrap(), "host");
 }
 

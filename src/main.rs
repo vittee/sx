@@ -70,7 +70,7 @@ fn run_ssh(args: &[String]) -> u8 {
 fn prepare_args(args: Vec<String>) -> Vec<String> {
     let Some(host) = injectable_host(&args) else { return args };
     match load_payload(&host) {
-        Ok(Some(payload)) => build_argv(args, &host, &payload),
+        Ok(Some(payload)) => build_argv(args, &payload),
         Ok(None) => args,
         Err(msg) => {
             eprintln!("sx: {msg}; running plain ssh");
@@ -94,7 +94,7 @@ fn load_payload(host: &str) -> Result<Option<String>, String> {
     let encoded = payload::encode(&rc).map_err(|e| format!("cannot encode rc: {e}"))?;
     if encoded.len() > payload::WARN_ENCODED_LEN {
         eprintln!(
-            "sx: payload is {} bytes encoded (over {}); the server may reject it",
+            "sx: payload is {} bytes encoded (over {}); the ssh command line may be too long",
             encoded.len(),
             payload::WARN_ENCODED_LEN
         );
@@ -132,14 +132,13 @@ fn profile_for_target<'a>(cfg: &'a config::Config, host: &str) -> Option<&'a str
 }
 
 /// Our options go first: ssh keeps the first value it sees for an option.
-fn build_argv(args: Vec<String>, host: &str, payload: &str) -> Vec<String> {
+fn build_argv(args: Vec<String>, payload: &str) -> Vec<String> {
+    let host = injectable_host(&args).unwrap_or_default();
     let mut argv = vec![
-        "-o".to_string(),
-        format!("SetEnv=LC_MONETARY={payload}"),
         "-o".to_string(),
         "RequestTTY=force".to_string(),
         "-o".to_string(),
-        format!("RemoteCommand={}", bootstrap::remote_command(host)),
+        format!("RemoteCommand={}", bootstrap::remote_command(&host, payload)),
     ];
     argv.extend(args);
     argv

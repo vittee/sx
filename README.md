@@ -78,23 +78,22 @@ A host that names a profile that does not exist uses `default_profile`.
 
 ## How it works
 
-`sx host` runs `ssh` with three extra options:
+`sx` runs `ssh` with two extra options:
 
-- `-o SetEnv=LC_MONETARY=<base64(gzip(rc))>` carries your rc.
-  sshd accepts `LC_*` by default (`AcceptEnv LANG LC_*`).
 - `-o RequestTTY=force`
-- `-o RemoteCommand=...` decodes the variable and starts `bash --rcfile <(...)`.
+- `-o RemoteCommand=...` carries your rc, gzipped and base64-encoded, inside the command.<br>
+  The command decodes it and starts `bash --rcfile <(...)`.<br>
   The server's own `~/.bashrc` is sourced first, then yours.
 
-The bootstrap unsets `LC_MONETARY` right after copying it.
+While you are logged in, other users on the server can see the command in the process list,
+so do not put secrets in snippets.
 
 ## Limits
 
-- The server must run bash and accept `LC_MONETARY`.
-  Debian and Ubuntu do by default, other distros may not.
-- If bash, `base64 -d` or `gunzip` is missing on the server, or it drops `LC_MONETARY`,
+- The server must run bash.
+- If bash, `base64 -d` or `gunzip` is missing on the server,
   you get the plain login shell and a one-line `sx:` message that gives the reason.
-- Payloads over about 8 KB (encoded) trigger a warning and may be rejected.
+- Payloads over about 24 KB (encoded) trigger a warning.
 - Only bash is supported. zsh and fish rc files are not.
 
 ## Build
