@@ -1,8 +1,17 @@
 [package]
-name = "sx"
+name = "sx-ssh"
 version = "0.1.0"
 edition = "2024"
+description = "Use your own shell prompt, aliases, vim and tmux settings on any server over ssh, with nothing installed there"
 license = "MIT"
+repository = "https://github.com/vittee/sx"
+readme = "README.md"
+keywords = ["ssh", "bash", "tui", "dotfiles", "cli"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "sx"
+path = "src/main.rs"
 
 [dependencies]
 base64 = "0.23.1"
