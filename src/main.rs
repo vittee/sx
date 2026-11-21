@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const HELP: &str = "\
 sx: run ssh with your own shell rc (prompt, aliases) on the server.
 
-Usage:  ([] is optional, <> is required)
+Usage:
   sx                                                          open the TUI (hosts, snippets, profiles)
   sx [ssh args] <host>                                        like ssh, but the remote bash loads your rc
   sx <host> --options <name>                                  use the host's saved options <name> (anywhere in the arguments)
@@ -32,10 +32,7 @@ Usage:  ([] is optional, <> is required)
   sx --help
 
 Config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
-sx adds the host's saved default options (set with Ctrl-O in the TUI) after your own ssh arguments,
-so what you type wins.
-sx skips injection (plain ssh) when you pass a remote command, -N, -T, -W, -O, -Q, -V, -G, -s,
--f, -n, or -o RemoteCommand, or when the host's profile is off.";
+";
 
 /// ssh options that take a value.
 const OPTS_WITH_VALUE: &str = "BbcDEeFIiJLlmOopQRSWw";
