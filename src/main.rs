@@ -1,5 +1,6 @@
 mod bootstrap;
 mod config;
+mod history;
 mod payload;
 mod ssh_config;
 
