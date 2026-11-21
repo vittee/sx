@@ -2,6 +2,7 @@ mod bootstrap;
 mod completions;
 mod config;
 mod editor;
+mod help;
 mod highlight;
 mod history;
 mod log;
@@ -17,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const HELP: &str = "\
 sx: run ssh with your own shell rc (prompt, aliases) on the server.
 
-usage:  ([] is optional, <> is required)
+Usage:  ([] is optional, <> is required)
   sx                                                          open the TUI (hosts, snippets, profiles)
   sx [ssh args] <host>                                        like ssh, but the remote bash loads your rc
   sx <host> --options <name>                                  use the host's saved options <name> (anywhere in the arguments)
@@ -30,7 +31,7 @@ usage:  ([] is optional, <> is required)
   sx --version                                                print the sx version (ssh's own -V shows the ssh version)
   sx --help
 
-config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
+Config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
 sx adds the host's saved default options (set with Ctrl-O in the TUI) after your own ssh arguments,
 so what you type wins.
 sx skips injection (plain ssh) when you pass a remote command, -N, -T, -W, -O, -Q, -V, -G, -s,
@@ -55,7 +56,7 @@ fn main() -> ExitCode {
         Some("completions") => return completions::print(&args[1..]),
         Some("__complete") => return completions::run(&args[1..]),
         Some("--help") => {
-            println!("{HELP}");
+            println!("{}", help::paint(HELP, log::stdout_color()));
             return ExitCode::SUCCESS;
         }
         Some("--version") => {

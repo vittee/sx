@@ -55,6 +55,11 @@ fn color_enabled(is_tty: bool) -> bool {
         && ansi_supported()
 }
 
+/// Whether to color what goes to stdout (the help text): a terminal that understands it.
+pub fn stdout_color() -> bool {
+    color_enabled(std::io::stdout().is_terminal())
+}
+
 fn emit(level: Level, msg: &str, to_stderr: bool) {
     let (tty, mut out): (bool, Box<dyn Write>) = if to_stderr {
         (std::io::stderr().is_terminal(), Box::new(std::io::stderr()))
