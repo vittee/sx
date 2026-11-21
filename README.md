@@ -198,3 +198,7 @@ so do not put secrets in snippets.
 cargo build --release   # binary: target/release/sx
 cargo test
 ```
+
+## License
+
+[MIT](LICENSE)
