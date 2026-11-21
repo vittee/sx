@@ -77,6 +77,11 @@ fn key(app: &mut App, code: KeyCode) {
     }));
 }
 
+/// The screen with every run of spaces made one, to compare text that is padded into columns.
+fn squash(screen: &str) -> String {
+    screen.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn typed(app: &mut App, s: &str) {
     s.chars().for_each(|c| key(app, KeyCode::Char(c)));
 }
@@ -1082,4 +1087,590 @@ fn the_host_list_shows_where_each_host_came_from_and_can_sort_by_it() {
     assert_eq!(order(&app), ["amy", "zed", "kh"], "config hosts first, then by name");
     click_header(&mut app, SortKey::Source);
     assert_eq!(order(&app), ["kh", "zed", "amy"], "reversed");
+}
+
+#[test]
+fn ctrl_o_edits_the_connection_options_of_a_host() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    let screen = render(&mut app);
+    assert!(screen.contains("alpha: connection options"));
+    let screen = squash(&screen);
+    for hint in ["Tab next field", "^N new", "^R rename", "^D delete", "Enter connect once", "^S save all", "Esc cancel"] {
+        assert!(screen.contains(hint), "{hint} missing: {screen}");
+    }
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "22x22"); // the port takes digits only
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "~/.ssh/work");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "bastion");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "-o ForwardAgent=yes");
+    ctrl(&mut app, 's'); // save
+
+    let p = &app.cfg.hosts["alpha"];
+    assert_eq!((p.user.as_str(), p.port.as_str(), p.identity.as_str()), ("root", "2222", "~/.ssh/work"));
+    assert_eq!((p.jump.as_str(), p.args.as_str()), ("bastion", "-o ForwardAgent=yes"));
+    assert_eq!(Config::load(&app.dir).unwrap().hosts["alpha"], *p, "saved");
+    let screen = render(&mut app);
+    assert!(!screen.contains("connection options"), "form closed: {screen}");
+    assert!(screen.contains("root@10.0.0.1:2222"), "the target shows the user and port: {screen}");
+
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(
+        app.pending_connect,
+        Some(
+            ["-l", "root", "-p", "2222", "-i", "~/.ssh/work", "-J", "bastion", "-o", "ForwardAgent=yes", "alpha"]
+                .map(String::from)
+                .to_vec()
+        )
+    );
+}
+
+#[test]
+fn the_options_form_shows_the_ssh_config_values_and_esc_discards() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    let screen = render(&mut app);
+    assert!(screen.contains("me"), "the user from ~/.ssh/config is the hint: {screen}");
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Char('y')); // discard
+    assert!(app.cfg.hosts.get("alpha").is_none_or(|p| p.user.is_empty()));
+    assert!(!render(&mut app).contains("connection options"));
+}
+
+#[test]
+fn esc_asks_before_throwing_away_unsaved_changes() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    key(&mut app, KeyCode::Esc);
+    assert!(!render(&mut app).contains("connection options"), "nothing to lose: closes at once");
+
+    ctrl(&mut app, 'o');
+    new_options(&mut app, "root");
+    let screen = render(&mut app);
+    assert!(screen.contains("(unsaved)"), "{screen}");
+    key(&mut app, KeyCode::Esc);
+    let screen = render(&mut app);
+    assert!(screen.contains("discard the changes") && screen.contains("keep editing"), "{screen}");
+    key(&mut app, KeyCode::Char('n')); // keep editing
+    assert!(render(&mut app).contains("connection options"));
+    assert!(!render(&mut app).contains("discard the changes"));
+
+    key(&mut app, KeyCode::Esc);
+    ctrl(&mut app, 's'); // save from the prompt
+    assert!(app.cfg.hosts["alpha"].options.contains_key("root"));
+    assert!(!render(&mut app).contains("connection options"));
+
+    // Typing and then undoing the typing leaves nothing to lose.
+    ctrl(&mut app, 'o');
+    typed(&mut app, "x");
+    key(&mut app, KeyCode::Backspace);
+    key(&mut app, KeyCode::Esc);
+    assert!(!render(&mut app).contains("connection options"));
+}
+
+#[test]
+fn a_click_outside_asks_too_and_a_click_on_the_hint_discards() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    typed(&mut app, "root");
+    render(&mut app);
+    click(&mut app, 0, 0);
+    assert!(render(&mut app).contains("discard the changes"), "asked instead of closing");
+    let (r, _) = app.hits.form_keys.iter().find(|(_, k)| k.code == KeyCode::Char('y')).copied().unwrap();
+    click(&mut app, r.x, r.y);
+    assert!(!render(&mut app).contains("connection options"));
+    assert!(app.cfg.hosts.get("alpha").is_none_or(|p| p.user.is_empty()));
+}
+
+#[test]
+fn a_bad_port_is_refused_and_an_emptied_form_clears_the_saved_options() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    typed(&mut app, "root");
+    ctrl(&mut app, 's');
+    assert_eq!(app.cfg.hosts["alpha"].user, "root");
+
+    ctrl(&mut app, 'o');
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "99999");
+    ctrl(&mut app, 's');
+    let screen = render(&mut app);
+    assert!(screen.contains("port must be"), "{screen}");
+    assert!(screen.contains("connection options"), "the form stays open: {screen}");
+    assert!(app.cfg.hosts["alpha"].port.is_empty());
+    ctrl(&mut app, 'u'); // clear the port
+    key(&mut app, KeyCode::BackTab); // back to the user
+    ctrl(&mut app, 'u');
+    ctrl(&mut app, 's');
+    assert!(!app.cfg.hosts["alpha"].has_overrides());
+    assert!(render(&mut app).contains("uses ~/.ssh/config again"));
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(vec!["alpha".to_string()]), "plain again");
+}
+
+#[test]
+fn enter_in_the_form_connects_once_without_saving() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "2200");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "root", "-p", "2200", "alpha"].map(String::from).to_vec()));
+    assert!(!render(&mut app).contains("connection options"), "the form closed");
+    assert!(app.cfg.hosts.get("alpha").is_none_or(|p| !p.has_overrides()), "nothing saved");
+    assert!(Config::load(&app.dir).unwrap().hosts.get("alpha").is_none_or(|p| !p.has_overrides()));
+
+    // The next plain connect has no trace of it.
+    app.pending_connect = None;
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(vec!["alpha".to_string()]));
+}
+
+#[test]
+fn a_one_off_connect_builds_on_the_saved_options_only_through_the_form() {
+    let (_t, mut app) = app();
+    app.cfg.hosts.entry("alpha".into()).or_default().user = "admin".into();
+    ctrl(&mut app, 'o');
+    assert!(render(&mut app).contains("admin"), "the form starts from the saved options");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "2200");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "admin", "-p", "2200", "alpha"].map(String::from).to_vec()));
+    assert!(app.cfg.hosts["alpha"].port.is_empty(), "the port was for this time only");
+    assert_eq!(app.cfg.hosts["alpha"].user, "admin", "the saved user is unchanged");
+}
+
+#[test]
+fn a_typed_user_at_host_picks_the_matching_host_and_the_user() {
+    let (_t, mut app) = app();
+    typed(&mut app, "root@bet");
+    let screen = render(&mut app);
+    assert!(screen.contains("connect as root"), "{screen}");
+    assert_eq!(app.visible().len(), 1, "only beta matches `bet`");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "root", "beta"].map(String::from).to_vec()));
+
+    // The typed user wins over the host's saved one: ssh keeps the first -l.
+    app.cfg.hosts.entry("beta".into()).or_default().user = "admin".into();
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "root", "-l", "admin", "beta"].map(String::from).to_vec()));
+}
+
+#[test]
+fn text_with_spaces_or_no_user_is_not_a_user_at_host_search() {
+    let (_t, mut app) = app();
+    typed(&mut app, "-p 22 me@new.host");
+    assert_eq!(app.filter_parts().0, None);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-p", "22", "me@new.host"].map(String::from).to_vec()));
+    let (_t2, mut app2) = app_with(vec![host("alpha", "10.0.0.1")]);
+    typed(&mut app2, "@alpha");
+    assert_eq!(app2.filter_parts().0, None, "an empty user is no user");
+}
+
+fn new_options(app: &mut App, name: &str) {
+    ctrl(app, 'n');
+    typed(app, name);
+    key(app, KeyCode::Enter);
+}
+
+#[test]
+fn named_sets_are_added_edited_saved_and_connect_with_the_picker() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    typed(&mut app, "me");
+    new_options(&mut app, "root");
+    assert!(render(&mut app).contains("root"), "the new options are shown and selected");
+    ctrl(&mut app, 'u'); // the copy of the default options: change the user
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "2200");
+    new_options(&mut app, "deploy");
+    ctrl(&mut app, 'u');
+    typed(&mut app, "deploy");
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "bastion");
+    ctrl(&mut app, 's');
+
+    let p = &app.cfg.hosts["alpha"];
+    assert_eq!(p.user, "me");
+    assert_eq!(p.options["root"].user, "root");
+    assert_eq!(p.options["root"].port, "2200");
+    assert_eq!((p.options["deploy"].user.as_str(), p.options["deploy"].jump.as_str()), ("deploy", "bastion"));
+    assert_eq!(Config::load(&app.dir).unwrap().hosts["alpha"], *p, "saved");
+
+    // A plain Enter still uses the default options.
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "me", "alpha"].map(String::from).to_vec()));
+
+    // Ctrl-L picks one of the options.
+    app.pending_connect = None;
+    ctrl(&mut app, 'l');
+    let screen = render(&mut app);
+    assert!(screen.contains("connect to alpha with") && screen.contains("deploy") && screen.contains("-l root -p 2200"), "{screen}");
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "root", "-p", "2200", "alpha"].map(String::from).to_vec()));
+    assert!(!render(&mut app).contains("connect to alpha with"), "the picker closed");
+}
+
+#[test]
+fn left_and_right_switch_sets_and_keep_the_edits() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    typed(&mut app, "me");
+    new_options(&mut app, "root");
+    ctrl(&mut app, 'u');
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Left); // back to default
+    assert!(render(&mut app).contains("me"));
+    key(&mut app, KeyCode::Right); // and to root again
+    key(&mut app, KeyCode::Enter); // connect with the options on screen
+    assert_eq!(app.pending_connect, Some(["-l", "root", "alpha"].map(String::from).to_vec()));
+    // New named options that are used right away are kept, but the default ones were not saved.
+    let p = &app.cfg.hosts["alpha"];
+    assert_eq!(p.options["root"].user, "root");
+    assert_eq!(p.user, "", "the unsaved default stays unsaved");
+    assert_eq!(Config::load(&app.dir).unwrap().hosts["alpha"].options["root"].user, "root");
+}
+
+#[test]
+fn connecting_with_edited_saved_options_does_not_change_them() {
+    let (_t, mut app) = app();
+    app.cfg.hosts.entry("alpha".into()).or_default().options.insert(
+        "root".into(),
+        config::ConnOptions { user: "root".into(), ..Default::default() },
+    );
+    ctrl(&mut app, 'o');
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "2200");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(["-l", "root", "-p", "2200", "alpha"].map(String::from).to_vec()));
+    assert_eq!(app.cfg.hosts["alpha"].options["root"].port, "", "an edit of saved options stays ad hoc");
+}
+
+#[test]
+fn the_picker_moves_when_its_title_bar_is_dragged() {
+    let (_t, mut app) = app();
+    app.cfg.hosts.entry("alpha".into()).or_default().options.insert("root".into(), Default::default());
+    ctrl(&mut app, 'l');
+    render(&mut app);
+    let before = app.hits.picker_area;
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), before.x + 4, before.y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), before.x + 9, before.y + 3);
+    mouse(&mut app, MouseEventKind::Up(MouseButton::Left), before.x + 9, before.y + 3);
+    render(&mut app);
+    let after = app.hits.picker_area;
+    assert_eq!((after.x, after.y), (before.x + 5, before.y + 3));
+    assert!(matches!(app.mode, Mode::OptionsPicker(_)), "still open");
+    key(&mut app, KeyCode::Esc);
+    ctrl(&mut app, 'l');
+    render(&mut app);
+    assert_eq!(app.hits.picker_area, before, "centred again on reopening");
+}
+
+#[test]
+fn the_options_form_is_wide_enough_for_its_key_hints() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    let screen = squash(&render(&mut app));
+    for hint in [
+        "Enter connect once Esc cancel Tab next field",
+        "←/→ switch ^N new ^R rename ^D delete",
+        "^S save all ^U clear field",
+    ] {
+        assert!(screen.contains(hint), "{hint}: {screen}");
+    }
+    let area = app.hits.form_area;
+    assert!(app.hits.form_keys.iter().all(|(r, _)| r.right() < area.right()), "a hint sticks out of the form");
+    assert!(app.hits.form_keys.len() >= 9);
+}
+
+#[test]
+fn a_set_can_be_deleted_and_its_name_must_be_new() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    new_options(&mut app, "root");
+    ctrl(&mut app, 'n');
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Enter);
+    assert!(render(&mut app).contains("already exists"));
+    key(&mut app, KeyCode::Esc); // cancels the name, not the form
+    assert!(render(&mut app).contains("connection options"));
+    new_options(&mut app, "default");
+    assert!(render(&mut app).contains("already exists"));
+    key(&mut app, KeyCode::Esc);
+    ctrl(&mut app, 'd');
+    ctrl(&mut app, 's');
+    assert!(app.cfg.hosts["alpha"].options.is_empty(), "root deleted");
+}
+
+#[test]
+fn the_picker_needs_named_sets() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'l');
+    assert!(render(&mut app).contains("no named options"));
+    assert!(app.pending_connect.is_none());
+}
+
+#[test]
+fn a_bad_port_in_any_set_stops_the_save() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    new_options(&mut app, "root");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "99999");
+    key(&mut app, KeyCode::Left); // the bad value stays in the root set
+    ctrl(&mut app, 's');
+    let screen = render(&mut app);
+    assert!(screen.contains("root: port must be"), "{screen}");
+    assert!(app.cfg.hosts.get("alpha").is_none_or(|p| p.options.is_empty()), "nothing saved");
+}
+
+#[test]
+fn the_options_form_takes_clicks_on_fields_sets_and_key_hints() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    typed(&mut app, "me");
+    render(&mut app);
+
+    // Add a set with the clickable hint, then name it.
+    let (r, _) = app.hits.form_keys.iter().find(|(_, k)| k.code == KeyCode::Char('n')).copied().unwrap();
+    click(&mut app, r.x, r.y);
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Enter);
+    render(&mut app);
+    assert_eq!(app.hits.form_options.len(), 2);
+
+    // A click on a field focuses it.
+    let f = app.hits.form_fields;
+    click(&mut app, f.x + 20, f.y + 3); // Jump host
+    typed(&mut app, "bastion");
+    // A click on a set name switches to it.
+    let (default_tab, _) = app.hits.form_options[0].clone();
+    click(&mut app, default_tab.x, default_tab.y);
+    assert!(render(&mut app).contains("me"));
+    let (root_tab, _) = app.hits.form_options[1].clone();
+    click(&mut app, root_tab.x, root_tab.y);
+    assert!(render(&mut app).contains("bastion"), "the edit stayed in the root set");
+
+    // The Enter hint connects once.
+    render(&mut app);
+    let (r, _) = app.hits.form_keys.iter().find(|(_, k)| k.code == KeyCode::Enter).copied().unwrap();
+    click(&mut app, r.x, r.y);
+    assert_eq!(app.pending_connect, Some(["-l", "me", "-J", "bastion", "alpha"].map(String::from).to_vec()));
+}
+
+#[test]
+fn a_click_outside_the_options_form_closes_it_and_the_wheel_moves_the_focus() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    render(&mut app);
+    app.on_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 40,
+        row: 12,
+        modifiers: KeyModifiers::NONE,
+    }));
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Char('s'));
+    ctrl(&mut app, 's');
+    assert_eq!(app.cfg.hosts["alpha"].port, "", "the wheel moved to the port, which takes digits only");
+    assert_eq!(app.cfg.hosts["alpha"].user, "", "nothing typed went to the user");
+
+    ctrl(&mut app, 'o');
+    render(&mut app);
+    click(&mut app, 0, 0);
+    assert!(!render(&mut app).contains("connection options"));
+}
+
+#[test]
+fn the_set_picker_connects_on_a_click_and_closes_on_an_outside_click() {
+    let (_t, mut app) = app();
+    app.cfg.hosts.entry("alpha".into()).or_default().options.insert(
+        "root".into(),
+        config::ConnOptions { user: "root".into(), ..Default::default() },
+    );
+    ctrl(&mut app, 'l');
+    render(&mut app);
+    click(&mut app, 0, 0);
+    assert!(!render(&mut app).contains("connect to alpha with"));
+    assert!(app.pending_connect.is_none());
+
+    ctrl(&mut app, 'l');
+    render(&mut app);
+    let list = app.hits.picker_list;
+    click(&mut app, list.x + 2, list.y + 1); // the second row: root
+    assert_eq!(app.pending_connect, Some(["-l", "root", "alpha"].map(String::from).to_vec()));
+}
+
+fn mouse(app: &mut App, kind: MouseEventKind, x: u16, y: u16) {
+    app.on_event(Event::Mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE }));
+}
+
+#[test]
+fn the_options_popup_moves_when_its_title_bar_is_dragged() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    render(&mut app);
+    let before = app.hits.form_area;
+    let (x, y) = (before.x + 5, before.y);
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), x + 6, y + 2);
+    mouse(&mut app, MouseEventKind::Up(MouseButton::Left), x + 6, y + 2);
+    render(&mut app);
+    let after = app.hits.form_area;
+    assert_eq!((after.x, after.y), (before.x + 6, before.y + 2));
+    assert!(matches!(app.mode, Mode::HostForm(_)), "the drag did not close it");
+
+    // A click on a field still works at the new place, and a drag far away stops at the edge.
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), after.x + 5, after.y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 500, 500);
+    mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 500, 500);
+    render(&mut app);
+    let edge = app.hits.form_area;
+    assert!(edge.right() <= 110 && edge.bottom() <= 40, "{edge:?}");
+
+    // A drag that starts elsewhere moves nothing, and reopening centres it again.
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), edge.x + 3, edge.y + 2);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), edge.x, edge.y);
+    key(&mut app, KeyCode::Esc);
+    ctrl(&mut app, 'o');
+    render(&mut app);
+    assert_eq!(app.hits.form_area, before);
+}
+
+#[test]
+fn many_option_names_scroll_around_the_current_one() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    for i in 1..=12 {
+        new_options(&mut app, &format!("deploy-{i:02}"));
+    }
+    let screen = render(&mut app);
+    let area = app.hits.form_area;
+    assert!(screen.contains("deploy-12") && screen.contains('‹'), "the newest is shown with names hidden before it: {screen}");
+    assert!(!screen.contains("deploy-01"), "{screen}");
+    assert!(app.hits.form_options.iter().all(|(r, _)| r.right() < area.right()), "a name sticks out of the form");
+
+    // Stepping left keeps the current name in view and brings in the ones at the other side.
+    for _ in 0..11 {
+        key(&mut app, KeyCode::Left);
+        let screen = render(&mut app);
+        let cur = app.hits.form_options.iter().any(|(_, n)| *n == app.current_options_name());
+        assert!(cur, "the current name is not shown: {screen}");
+    }
+    let screen = render(&mut app);
+    assert!(screen.contains("deploy-01") && screen.contains('›') && !screen.contains('‹'), "{screen}");
+
+    // The arrows are clickable and step one name.
+    let (r, k) = app.hits.form_keys.iter().find(|(_, k)| k.code == KeyCode::Right).copied().unwrap();
+    assert_eq!(k.code, KeyCode::Right);
+    let before = app.current_options_name();
+    click(&mut app, r.x, r.y);
+    assert_ne!(app.current_options_name(), before);
+    assert!(matches!(app.mode, Mode::HostForm(_)), "still open");
+}
+
+#[test]
+fn a_name_longer_than_the_row_is_still_reachable() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    new_options(&mut app, &"x".repeat(80));
+    let screen = render(&mut app);
+    assert!(screen.contains("xxxxxxxx"), "{screen}");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Right);
+    assert!(matches!(app.mode, Mode::HostForm(_)));
+}
+
+#[test]
+fn ctrl_r_renames_the_current_named_options() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    ctrl(&mut app, 'r');
+    assert!(render(&mut app).contains("cannot be renamed"), "the default options keep their name");
+    typed(&mut app, "x"); // the key went to a field, not to a name prompt
+    key(&mut app, KeyCode::Backspace);
+
+    new_options(&mut app, "root");
+    ctrl(&mut app, 'u');
+    typed(&mut app, "root");
+    ctrl(&mut app, 'r');
+    let screen = render(&mut app);
+    assert!(screen.contains("Rename to") && screen.contains("root"), "prefilled with the old name: {screen}");
+    for _ in 0..4 {
+        key(&mut app, KeyCode::Backspace);
+    }
+    typed(&mut app, "admin");
+    key(&mut app, KeyCode::Enter);
+    ctrl(&mut app, 's');
+
+    let p = &app.cfg.hosts["alpha"];
+    assert!(!p.options.contains_key("root"), "the old name is gone");
+    assert_eq!(p.options["admin"].user, "root", "the values moved with the name");
+}
+
+#[test]
+fn a_rename_to_a_taken_name_is_refused_and_esc_cancels_it() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    new_options(&mut app, "root");
+    new_options(&mut app, "deploy");
+    ctrl(&mut app, 'r');
+    for _ in 0.."deploy".len() {
+        key(&mut app, KeyCode::Backspace);
+    }
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Enter);
+    assert!(render(&mut app).contains("already exist"));
+    key(&mut app, KeyCode::Esc); // cancels the rename, not the form
+    let screen = render(&mut app);
+    assert!(screen.contains("connection options") && !screen.contains("Rename to"), "{screen}");
+    ctrl(&mut app, 's');
+    let names: Vec<_> = app.cfg.hosts["alpha"].options.keys().cloned().collect();
+    assert_eq!(names, ["deploy", "root"]);
+}
+
+/// True when the cell at the start of `text` on the screen is drawn bold.
+fn bold_at(app: &mut App, text: &str) -> bool {
+    let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let buf = term.backend().buffer().clone();
+    for y in 0..buf.area.height {
+        let row: Vec<&str> = (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect();
+        let line = row.concat();
+        if let Some(at) = line.find(text) {
+            let x = line[..at].chars().count() as u16;
+            return buf[(x, y)].modifier.contains(Modifier::BOLD);
+        }
+    }
+    panic!("{text} not on screen");
+}
+
+#[test]
+fn the_pick_hint_lights_up_only_when_the_host_has_named_options() {
+    let (_t, mut app) = app();
+    assert!(!app.can_pick_options());
+    assert!(!bold_at(&mut app, "^L"), "nothing to pick: the key is dim");
+    assert!(bold_at(&mut app, "^O"), "the other keys stay lit");
+
+    app.cfg.hosts.entry("alpha".into()).or_default().options.insert("root".into(), Default::default());
+    assert!(app.can_pick_options());
+    assert!(bold_at(&mut app, "^L"), "named options exist: the key is lit");
+
+    // Another host has none.
+    key(&mut app, KeyCode::Down);
+    assert!(!app.can_pick_options());
+    assert!(!bold_at(&mut app, "^L"));
 }

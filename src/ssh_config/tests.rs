@@ -52,3 +52,13 @@ fn include_is_followed() {
     assert_eq!(names, ["included", "main"]);
     assert_eq!(hosts[0].user.as_deref(), Some("bob"));
 }
+
+#[test]
+fn target_with_replaces_the_user_and_port() {
+    let host = &parse("Host box\n  HostName 10.0.0.1\n  User me\n  Port 22\n")[0];
+    assert_eq!(host.target(), "me@10.0.0.1:22");
+    assert_eq!(host.target_with(Some("root"), None), "root@10.0.0.1:22");
+    assert_eq!(host.target_with(None, Some("2222")), "me@10.0.0.1:2222");
+    let bare = &parse("Host plain\n")[0];
+    assert_eq!(bare.target_with(Some("root"), Some("2200")), "root@plain:2200");
+}

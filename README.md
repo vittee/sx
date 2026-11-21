@@ -83,7 +83,9 @@ invert_scroll = true
 
 The list comes from `~/.ssh/config` (with `Include`) and `~/.ssh/known_hosts`.<br>
 The `source` column shows which one a host came from: `config` or `known_hosts`.<br>
-Or simply connect to the typed text in the search box.
+Or simply connect to the typed text in the search box.<br>
+Typing `root@web` filters the list on `web` and connects to the selected host as `root`, for this
+connection only.
 
 #### Keys
 - `Left`/`Right`, or a click on the profile column,
@@ -91,6 +93,20 @@ Or simply connect to the typed text in the search box.
 - `Ctrl-F`, or a click on the star, marks a favorite.
 - `Ctrl-E` picks extra snippets for the selected host on top of its profile's.
   The profile column then reads `default+2`.
+- `Ctrl-O` sets connection options for the selected host: user, port, identity file, jump host,
+  and extra ssh arguments such as `-o ForwardAgent=yes`.
+  `Enter` connects with them this time only, `Ctrl-S` saves them for the host.
+  New named options that you connect with straight away are saved too.
+  A host can keep several named options, for example `root` and `deploy via bastion`:
+  `Ctrl-N` adds one (a copy of the ones on screen), `Left`/`Right` switch between them,
+  `Ctrl-R` renames the ones on screen, and `Ctrl-D` deletes them.
+  With many names the row scrolls, and `‹` and `›` mark the hidden ones.
+  `Esc` or a click outside asks before it throws away unsaved changes (the title says `unsaved`).
+  The form takes the mouse too: click a field, an options name or a key hint, drag the title bar to move it (the `Ctrl-L` picker moves the same way), and click outside to close it.
+- `Ctrl-L` picks one of the host's named options and connects with them (a click on one connects too).
+  A plain `Enter` on the list uses the default options.
+  Saved options are kept in `config.toml` and passed to ssh on connect, so `~/.ssh/config` is never changed.
+  Empty fields change nothing, and the target column turns magenta for a host with saved options.
 
 To sort, click a column header (click again to reverse),
 or press `Ctrl-S` to cycle the column and `Ctrl-R` to reverse.
@@ -136,7 +152,7 @@ to keep the server's prompt.
   `sx init` creates `20-aliases`, which the default profile sends, and the vim presets below,
   which stay off until you turn them on in Profiles.
 - `config.toml` holds the profiles (snippets and prompt theme), the default profile,
-  each host's profile and extra snippets, favorites and last-used times.
+  each host's profile, extra snippets and connection options, favorites and last-used times.
 - `history.tsv` has one line per session (time, host, seconds, outcome), trimmed to the newest 1000.
 
 The prompt theme goes after the snippets, so choosing one overrides any `PS1` a snippet sets.
@@ -227,21 +243,6 @@ so do not put secrets in snippets.
 ```sh
 cargo build --release   # binary: target/release/sx
 cargo test
-```
-
-## Releasing
-
-The changelog is built from the conventional commit messages with [git-cliff](https://git-cliff.org),
-and the release workflow uses the matching section as the GitHub release notes.
-
-```sh
-# set the new version in Cargo.toml, then
-cargo check                                               # updates Cargo.lock
-git cliff --unreleased --tag v0.2.0 --prepend CHANGELOG.md
-git commit -am "chore: release v0.2.0"
-git tag v0.2.0
-git push origin main
-git push origin v0.2.0                                    # push the tag on its own
 ```
 
 ## Releasing

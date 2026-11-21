@@ -35,13 +35,18 @@ impl HostEntry {
 
     /// `user@hostname:port`, only the parts that are known.
     pub fn target(&self) -> String {
+        self.target_with(None, None)
+    }
+
+    /// Like [`target`](Self::target), with a user and a port that replace the ones from the config.
+    pub fn target_with(&self, user: Option<&str>, port: Option<&str>) -> String {
         let mut s = String::new();
-        if let Some(u) = &self.user {
+        if let Some(u) = user.or(self.user.as_deref()) {
             s.push_str(u);
             s.push('@');
         }
         s.push_str(self.hostname.as_deref().unwrap_or(&self.alias));
-        if let Some(p) = &self.port {
+        if let Some(p) = port.or(self.port.as_deref()) {
             s.push(':');
             s.push_str(p);
         }

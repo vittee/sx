@@ -67,14 +67,32 @@ pub(super) fn fuzzy(needle: &str, hay: &str) -> bool {
 impl App {
     /// Indices into `self.hosts` that match the filter, in the configured sort order.
     pub(super) fn visible(&self) -> Vec<usize> {
+        let (_, needle) = self.filter_parts();
         let mut idx: Vec<usize> = (0..self.hosts.len())
             .filter(|&i| {
                 let h = &self.hosts[i];
-                fuzzy(&self.filter, &format!("{} {}", h.alias, h.target()))
+                fuzzy(needle, &format!("{} {}", h.alias, self.target_of(h)))
             })
             .collect();
         idx.sort_by(|&a, &b| self.compare(a, b));
         idx
+    }
+
+    /// The search text as `(user, host part)`: `root@web` means "connect to the host matching `web`
+    /// as `root`". Text with spaces is ssh arguments, not a host search, and has no user.
+    pub(super) fn filter_parts(&self) -> (Option<&str>, &str) {
+        match self.filter.split_once('@') {
+            Some((user, rest)) if !user.is_empty() && !self.filter.contains(char::is_whitespace) => (Some(user), rest),
+            _ => (None, &self.filter),
+        }
+    }
+
+    /// `user@host:port` with the user and port the host's options replace.
+    pub(super) fn target_of(&self, h: &HostEntry) -> String {
+        match self.cfg.hosts.get(&h.alias) {
+            Some(p) => h.target_with(Some(p.user.trim()).filter(|s| !s.is_empty()), Some(p.port.trim()).filter(|s| !s.is_empty())),
+            None => h.target(),
+        }
     }
 
     /// Orders two hosts by the configured key. Hosts never used always sort last under "last used".
@@ -97,7 +115,7 @@ impl App {
             }
             SortKey::Host => directed(by_name()),
             SortKey::Target => directed(
-                ha.target().to_lowercase().cmp(&hb.target().to_lowercase()).then_with(by_name),
+                self.target_of(ha).to_lowercase().cmp(&self.target_of(hb).to_lowercase()).then_with(by_name),
             ),
             SortKey::Profile => directed(profile(ha).cmp(&profile(hb)).then_with(by_name)),
             SortKey::Source => directed(ha.source.label().cmp(hb.source.label()).then_with(by_name)),
@@ -155,13 +173,27 @@ impl App {
         self.host_state.selected().and_then(|s| vis.get(s).copied())
     }
 
+    /// The ssh arguments for host `i`, with `opts` as its connection options.
+    pub(super) fn connect_args(&self, i: usize, opts: Option<&config::ConnOptions>) -> Vec<String> {
+        let h = &self.hosts[i];
+        // A user typed as `root@web1` wins over the host's options: ssh keeps the first value.
+        let mut args = Vec::new();
+        if let (Some(user), _) = self.filter_parts() {
+            args.extend(["-l".to_string(), user.to_string()]);
+        }
+        if let Some(opts) = opts {
+            args.extend(opts.ssh_args());
+        }
+        if let (Some(p), true) = (&h.port, h.source == Source::KnownHosts) {
+            args.extend(["-p".to_string(), p.clone()]);
+        }
+        args.push(h.alias.clone());
+        args
+    }
+
     pub(super) fn connect_selected(&mut self) {
         let args = if let Some(i) = self.selected_host() {
-            let h = &self.hosts[i];
-            match (&h.port, h.source == Source::KnownHosts) {
-                (Some(p), true) => vec!["-p".to_string(), p.clone(), h.alias.clone()],
-                _ => vec![h.alias.clone()],
-            }
+            self.connect_args(i, self.cfg.hosts.get(&self.hosts[i].alias).map(|p| p.default_options()).as_ref())
         } else if !self.filter.trim().is_empty() {
             self.filter.split_whitespace().map(String::from).collect() // typed ssh arguments
         } else {
@@ -231,6 +263,8 @@ impl App {
             KeyCode::Enter => self.connect_selected(),
             KeyCode::Char('f') if ctrl => self.toggle_favorite_of_selected(),
             KeyCode::Char('e') if ctrl => self.open_host_snippets(),
+            KeyCode::Char('o') if ctrl => self.open_host_options(),
+            KeyCode::Char('l') if ctrl => self.open_options_picker(),
             KeyCode::Char('s') if ctrl => self.cycle_sort(),
             KeyCode::Char('r') if ctrl => self.reverse_sort(),
             KeyCode::Char(c) if !ctrl => {
@@ -342,7 +376,10 @@ impl App {
             Span::raw(self.filter.clone()),
             Span::styled("▏", Style::new().fg(Color::Cyan)),
         ]))
-        .block(Block::bordered().title(format!(" Search ({} hosts) ", vis.len())));
+        .block(Block::bordered().title(match self.filter_parts().0 {
+            Some(user) => format!(" Search ({} hosts, connect as {user}) ", vis.len()),
+            None => format!(" Search ({} hosts) ", vis.len()),
+        }));
         f.render_widget(search, search_a);
 
         let block = Block::bordered();
@@ -374,10 +411,16 @@ impl App {
                 let extras = self.cfg.host_snippets(&h.alias).len();
                 let profile = &if extras > 0 && !off { format!("{base}+{extras}") } else { base.to_string() };
                 let used = prefs.and_then(|p| p.last_used).map(ago).unwrap_or_default();
+                // Cyan marks a host whose connection options are set (Ctrl-O).
+                let target_style = if prefs.is_some_and(|p| p.has_overrides()) {
+                    Style::new().fg(super::hostedit::ACCENT)
+                } else {
+                    Style::new().add_modifier(Modifier::DIM)
+                };
                 ListItem::new(Line::from(vec![
                     Span::styled(truncate(if fav { "★" } else { "" }, COL_STAR), Style::new().fg(Color::Yellow)),
                     Span::raw(truncate(&h.alias, COL_ALIAS)),
-                    Span::styled(truncate(&h.target(), COL_TARGET), Style::new().add_modifier(Modifier::DIM)),
+                    Span::styled(truncate(&self.target_of(h), COL_TARGET), target_style),
                     Span::styled(
                         truncate(profile, COL_PROFILE),
                         Style::new().fg(if off { Color::DarkGray } else { Color::Green }),

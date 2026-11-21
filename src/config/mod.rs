@@ -46,6 +46,123 @@ pub struct HostPrefs {
     /// Snippets sent to this host on top of its profile's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub snippets: Vec<String>,
+    /// The default connection options, which replace the ones from `~/.ssh/config`: ssh `-l`,
+    /// `-p`, `-i`, `-J`, and free-form extra arguments. Empty means no override.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub port: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub identity: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub jump: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub args: String,
+    /// Named options of connection options, picked when connecting (for example `root`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, ConnOptions>,
+}
+
+/// One group of connection options.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ConnOptions {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub port: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub identity: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub jump: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub args: String,
+}
+
+impl ConnOptions {
+    /// True when any option is set.
+    pub fn is_set(&self) -> bool {
+        [&self.user, &self.port, &self.identity, &self.jump, &self.args].iter().any(|s| !s.trim().is_empty())
+    }
+
+    /// The ssh options that carry these settings. They go before the host, where they win over
+    /// `~/.ssh/config` (ssh keeps the first value it sees for an option).
+    pub fn ssh_args(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (flag, value) in [("-l", &self.user), ("-p", &self.port), ("-i", &self.identity), ("-J", &self.jump)] {
+            let value = value.trim();
+            if !value.is_empty() {
+                out.push(flag.to_string());
+                out.push(value.to_string());
+            }
+        }
+        out.extend(split_args(&self.args));
+        out
+    }
+
+    /// A short form for lists: the ssh arguments, or `no options`.
+    pub fn summary(&self) -> String {
+        if self.is_set() { self.ssh_args().join(" ") } else { "no options".to_string() }
+    }
+}
+
+impl HostPrefs {
+    /// The default options: the options a plain connect uses.
+    pub fn default_options(&self) -> ConnOptions {
+        ConnOptions {
+            user: self.user.clone(),
+            port: self.port.clone(),
+            identity: self.identity.clone(),
+            jump: self.jump.clone(),
+            args: self.args.clone(),
+        }
+    }
+
+    pub fn set_default_options(&mut self, o: ConnOptions) {
+        (self.user, self.port, self.identity, self.jump, self.args) = (o.user, o.port, o.identity, o.jump, o.args);
+    }
+
+    /// True when the default options or any named set has an option.
+    pub fn has_overrides(&self) -> bool {
+        self.default_options().is_set() || self.options.values().any(ConnOptions::is_set)
+    }
+
+    /// The ssh options of the default options.
+    pub fn ssh_args(&self) -> Vec<String> {
+        self.default_options().ssh_args()
+    }
+}
+
+/// Splits like a shell would for simple cases: on white space, with single or double quotes
+/// grouping words. Backslashes are kept as they are.
+pub fn split_args(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut started = false;
+    for c in s.chars() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => cur.push(c),
+            (None, '\'' | '"') => {
+                quote = Some(c);
+                started = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if started {
+                    out.push(std::mem::take(&mut cur));
+                    started = false;
+                }
+            }
+            (None, c) => {
+                cur.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        out.push(cur);
+    }
+    out
 }
 
 fn is_false(b: &bool) -> bool {

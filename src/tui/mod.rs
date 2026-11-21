@@ -71,6 +71,10 @@ enum Mode {
     Confirm(Pending),
     /// Choosing the extra snippets of one host (holds its name in `config.toml`).
     HostSnippets(String),
+    /// Editing the connection options of one host.
+    HostForm(Box<HostForm>),
+    /// Choosing one of a host's named options to connect with.
+    OptionsPicker(Box<OptionsPicker>),
 }
 
 /// Which pane of the Profiles tab has the keyboard.
@@ -96,6 +100,15 @@ struct Hits {
     chk_colw: u16,
     /// Rows of the per-host snippet popup.
     popup_list: Rect,
+    /// The connection options form: its frame, the rows of its fields, the options names and the
+    /// clickable key hints.
+    form_area: Rect,
+    form_fields: Rect,
+    form_options: Vec<(Rect, Option<String>)>,
+    form_keys: Vec<(Rect, KeyEvent)>,
+    /// The options picker: its frame and its rows.
+    picker_area: Rect,
+    picker_list: Rect,
 }
 
 pub struct App {
@@ -132,6 +145,9 @@ pub struct App {
     last_click: Option<(Instant, Tab, usize)>,
     /// ssh arguments to run once the event handler returns (needs the terminal).
     pending_connect: Option<Vec<String>>,
+    /// How far the options popup or the picker was dragged from the centre, and where a drag last was.
+    popup_offset: (i32, i32),
+    popup_drag: Option<(u16, u16)>,
 }
 
 fn inside(r: Rect, x: u16, y: u16) -> bool {
@@ -179,6 +195,8 @@ impl App {
             hits: Hits::default(),
             last_click: None,
             pending_connect: None,
+            popup_offset: (0, 0),
+            popup_drag: None,
         };
         // Hosts used before but missing from ssh config/known_hosts still show up.
         let known: Vec<String> = app.hosts.iter().map(|h| h.alias.clone()).collect();
@@ -261,6 +279,8 @@ impl App {
             Mode::Input(kind, buf) => self.on_key_input(k, kind, buf),
             Mode::Confirm(p) => self.on_key_confirm(k, p),
             Mode::HostSnippets(host) => self.on_key_host_snippets(k, host),
+            Mode::HostForm(form) => self.on_key_host_form(k, *form),
+            Mode::OptionsPicker(pick) => self.on_key_options_picker(k, *pick),
             Mode::Normal => {
                 self.status = None;
                 match self.tab {
@@ -320,6 +340,9 @@ impl App {
             MouseEventKind::ScrollDown => Some(flip),
             _ => None,
         };
+        if self.drag_options_popup(&m) {
+            return;
+        }
         let click = matches!(m.kind, MouseEventKind::Down(MouseButton::Left));
         if !click && wheel.is_none() {
             return;
@@ -339,6 +362,11 @@ impl App {
                 self.mode = Mode::Normal; // a click outside closes the popup
             }
             return;
+        }
+        match std::mem::replace(&mut self.mode, Mode::Normal) {
+            Mode::HostForm(form) => return self.on_mouse_host_form(*form, (x, y), wheel, click),
+            Mode::OptionsPicker(pick) => return self.on_mouse_options_picker(*pick, (x, y), wheel, click),
+            other => self.mode = other,
         }
         if !matches!(self.mode, Mode::Normal) {
             return;
@@ -365,8 +393,11 @@ impl App {
             Tab::Snippets => self.draw_snippets(f, body),
             Tab::Profiles => self.draw_profiles(f, body),
         }
-        if let Mode::HostSnippets(host) = self.mode.clone() {
-            self.draw_host_snippets(f, body, &host);
+        match self.mode.clone() {
+            Mode::HostSnippets(host) => self.draw_host_snippets(f, body, &host),
+            Mode::HostForm(form) => self.draw_host_form(f, body, &form),
+            Mode::OptionsPicker(pick) => self.draw_set_picker(f, body, &pick),
+            _ => {}
         }
         self.draw_footer(f, foot);
     }
@@ -403,7 +434,9 @@ impl App {
 }
 
 mod footer;
+mod hostedit;
 mod hosts;
+use hostedit::{HostForm, OptionsPicker};
 mod profiles;
 mod snippets;
 use snippets::kind_color;

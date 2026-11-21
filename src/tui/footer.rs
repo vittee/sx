@@ -29,6 +29,10 @@ impl App {
             Mode::HostSnippets(host) => {
                 Line::styled(format!(" Extra snippets for {host}, on top of its profile"), Style::new().fg(Color::Cyan))
             }
+            Mode::HostForm(_) | Mode::OptionsPicker(_) => match &self.status {
+                Some((m, true)) => Line::styled(format!(" {m}"), Style::new().fg(Color::Red)),
+                _ => Line::raw(""),
+            },
             _ => match &self.status {
                 Some((m, true)) => Line::styled(format!(" {m}"), Style::new().fg(Color::Red)),
                 Some((m, false)) => Line::styled(format!(" {m}"), Style::new().fg(Color::Green)),
@@ -41,11 +45,24 @@ impl App {
         let hints: &[(&str, &str)] = match (&self.mode, self.tab) {
             (Mode::Input(..), _) => &[("Enter", "create"), ("Esc", "cancel")],
             (Mode::HostSnippets(_), _) => &[("Up/Down", "choose"), ("Space", "toggle"), ("Esc", "close")],
+            (Mode::HostForm(form), _) if form.is_naming() => &[("Enter", "add"), ("Esc", "cancel")],
+            (Mode::HostForm(_), _) => &[
+                ("Tab", "next field"),
+                ("←/→", "options"),
+                ("^N", "new options"),
+                ("^D", "delete options"),
+                ("Enter", "connect once"),
+                ("^S", "save"),
+                ("Esc", "cancel"),
+            ],
+            (Mode::OptionsPicker(_), _) => &[("Up/Down", "choose"), ("Enter", "connect"), ("Esc", "close")],
             (_, Tab::Hosts) => &[
                 ("Enter", "connect"),
                 ("←/→", "profile"),
                 ("^F", "fav"),
                 ("^E", "extras"),
+                ("^O", "options"),
+                ("^L", "pick"),
                 ("^S", "sort"),
                 ("^R", "rev"),
                 ("Esc", "quit"),
@@ -81,11 +98,14 @@ impl App {
         let desc_style = Style::new().add_modifier(Modifier::DIM);
         let toggle = ("F2", if self.mouse { "select text" } else { "mouse" });
         let mut hints = hints.to_vec();
-        if !matches!(self.mode, Mode::Input(..) | Mode::HostSnippets(_)) {
+        if !matches!(self.mode, Mode::Input(..) | Mode::HostSnippets(_) | Mode::HostForm(_) | Mode::OptionsPicker(_)) {
             hints.push(toggle);
         }
+        // The pick key does nothing for a host without named options, so it is not lit up.
+        let pick_off = matches!(self.mode, Mode::Normal) && self.tab == Tab::Hosts && !self.can_pick_options();
         let mut spans = vec![Span::raw(" ")];
         for (key, desc) in hints {
+            let key_style = if pick_off && key == "^L" { desc_style } else { key_style };
             spans.push(Span::styled(key, key_style));
             spans.push(Span::styled(format!(" {desc}  "), desc_style));
         }

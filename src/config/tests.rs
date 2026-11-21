@@ -372,3 +372,66 @@ fn missing_presets_are_added_off_and_existing_files_are_kept() {
     assert!(list_snippets(tmp.path()).contains(&"vim-keys.vim".to_string()));
     assert_eq!(Config::load(tmp.path()).unwrap(), cfg, "no profile changed");
 }
+
+#[test]
+fn host_options_become_ssh_arguments_before_the_host() {
+    let prefs = HostPrefs {
+        user: "root".into(),
+        port: "2222".into(),
+        identity: " ~/.ssh/work ".into(),
+        jump: "bastion".into(),
+        args: "-o ForwardAgent=yes".into(),
+        ..HostPrefs::default()
+    };
+    assert!(prefs.has_overrides());
+    assert_eq!(
+        prefs.ssh_args(),
+        ["-l", "root", "-p", "2222", "-i", "~/.ssh/work", "-J", "bastion", "-o", "ForwardAgent=yes"]
+    );
+    assert!(!HostPrefs::default().has_overrides());
+    assert!(HostPrefs::default().ssh_args().is_empty());
+}
+
+#[test]
+fn extra_arguments_are_split_like_a_shell_would_for_simple_cases() {
+    assert_eq!(split_args("  -v   -o  A=b "), ["-v", "-o", "A=b"]);
+    assert_eq!(split_args(r#"-o "ProxyCommand ssh -W %h:%p jump" -L '8080:localhost:80'"#), [
+        "-o",
+        "ProxyCommand ssh -W %h:%p jump",
+        "-L",
+        "8080:localhost:80"
+    ]);
+    assert_eq!(split_args("a '' b"), ["a", "", "b"], "an empty quoted word is kept");
+    assert!(split_args("   ").is_empty());
+}
+
+#[test]
+fn host_options_are_saved_only_when_set() {
+    let (tmp, mut cfg) = setup();
+    cfg.hosts.entry("box".into()).or_default().user = "root".into();
+    cfg.save(tmp.path()).unwrap();
+    let text = std::fs::read_to_string(tmp.path().join("config.toml")).unwrap();
+    assert!(text.contains("user = \"root\""), "{text}");
+    assert!(!text.contains("port") && !text.contains("identity") && !text.contains("jump"), "{text}");
+    assert_eq!(Config::load(tmp.path()).unwrap().hosts["box"].user, "root");
+}
+
+#[test]
+fn named_option_sets_round_trip_and_old_configs_still_load() {
+    let (tmp, mut cfg) = setup();
+    let prefs = cfg.hosts.entry("box".into()).or_default();
+    prefs.user = "me".into();
+    prefs.options.insert("root".into(), ConnOptions { user: "root".into(), jump: "bastion".into(), ..ConnOptions::default() });
+    cfg.save(tmp.path()).unwrap();
+    let loaded = Config::load(tmp.path()).unwrap();
+    assert_eq!(loaded.hosts["box"].options["root"].summary(), "-l root -J bastion");
+    assert_eq!(loaded.hosts["box"].user, "me");
+    assert!(loaded.hosts["box"].has_overrides());
+
+    // A config saved before options existed has only the default options.
+    std::fs::write(tmp.path().join("config.toml"), "[hosts.old]\nuser = \"root\"\nport = \"2200\"\n").unwrap();
+    let old = Config::load(tmp.path()).unwrap();
+    assert!(old.hosts["old"].options.is_empty());
+    assert_eq!(old.hosts["old"].ssh_args(), ["-l", "root", "-p", "2200"]);
+    assert_eq!(ConnOptions::default().summary(), "no options");
+}
