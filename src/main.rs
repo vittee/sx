@@ -1,6 +1,7 @@
 mod bootstrap;
 mod config;
 mod payload;
+mod ssh_config;
 
 use std::env;
 use std::process::{Command, ExitCode};
