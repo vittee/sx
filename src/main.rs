@@ -93,7 +93,7 @@ fn load_payload(host: &str) -> Result<Option<String>, String> {
         eprintln!("sx: created sample snippets in {}", dir.display());
     }
     let Some(profile) = profile_for_target(&cfg, host) else { return Ok(None) };
-    let rc = config::build_rc(&dir, &cfg, profile);
+    let rc = config::build_rc_for_host(&dir, &cfg, profile, &host_key(&cfg, host));
     if rc.trim().is_empty() {
         return Ok(None);
     }
