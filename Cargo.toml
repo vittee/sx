@@ -5,7 +5,10 @@ edition = "2024"
 
 [dependencies]
 base64 = "0.23.1"
+ctrlc = "3.5.3"
 flate2 = "1.1.11"
+glob = "0.3.4"
+ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.1"
 
