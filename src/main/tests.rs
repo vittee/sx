@@ -9,6 +9,56 @@ fn inject(line: &str) -> bool {
     host(line).is_some()
 }
 
+fn cfg_with_options() -> config::Config {
+    let mut cfg = config::Config::default();
+    let prefs = cfg.hosts.entry("web".to_string()).or_default();
+    prefs.port = "2200".to_string();
+    prefs.options.insert("root".to_string(), config::ConnOptions { user: "root".to_string(), ..Default::default() });
+    cfg
+}
+
+#[test]
+fn named_options_are_picked_by_name_and_the_default_is_used_without_one() {
+    let cfg = cfg_with_options();
+    let root = pick_options(&cfg, "web", Some("root")).unwrap().unwrap();
+    assert_eq!(root.ssh_args(), ["-l", "root"]);
+    // `user@` is not part of the saved host name.
+    assert_eq!(pick_options(&cfg, "me@web", None).unwrap().unwrap().ssh_args(), ["-p", "2200"]);
+    assert!(pick_options(&cfg, "other", None).unwrap().is_none());
+}
+
+#[test]
+fn an_unknown_options_name_lists_the_known_ones() {
+    let cfg = cfg_with_options();
+    let msg = pick_options(&cfg, "web", Some("nope")).unwrap_err();
+    assert!(msg.contains("\"nope\"") && msg.contains("root"), "{msg}");
+    assert!(pick_options(&cfg, "other", Some("x")).unwrap_err().contains("none saved"));
+}
+
+#[test]
+fn saved_options_come_after_the_typed_arguments() {
+    let o = config::ConnOptions { port: "2200".to_string(), ..Default::default() };
+    let args = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();
+    assert_eq!(with_options(args("-p 22 web"), &o), args("-p 22 web -p 2200"));
+    assert_eq!(with_options(args("web -- ls"), &o), args("web -p 2200 -- ls"));
+}
+
+#[test]
+fn options_flag_is_taken_from_any_position() {
+    let take = |line: &str| {
+        let mut args: Vec<String> = line.split_whitespace().map(String::from).collect();
+        let name = take_options(&mut args);
+        (name, args.join(" "))
+    };
+    assert_eq!(take("--options root web"), (Ok(Some("root".to_string())), "web".to_string()));
+    assert_eq!(take("-p 22 web --options root"), (Ok(Some("root".to_string())), "-p 22 web".to_string()));
+    assert_eq!(take("-p 22 --options=root web"), (Ok(Some("root".to_string())), "-p 22 web".to_string()));
+    assert_eq!(take("web"), (Ok(None), "web".to_string()));
+    // After `--` the words belong to the remote command.
+    assert_eq!(take("web -- ls --options x"), (Ok(None), "web -- ls --options x".to_string()));
+    assert!(take("web --options").0.is_err());
+}
+
 #[test]
 fn version_line_names_the_crate_version() {
     assert_eq!(version_line(), format!("sx {}", env!("CARGO_PKG_VERSION")));

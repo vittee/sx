@@ -21,11 +21,14 @@ usage:
   sx [ssh args] host     like ssh, but the remote bash loads your rc
   sx init                create the sample snippets and default profile
   sx init --presets      add the vim presets that are missing, switched off
+  sx host --options NAME use the host's saved options NAME (anywhere in the arguments)
   sx --dry-run [...]     print the ssh command instead of running it
   sx --version           print the sx version (ssh's own -V shows the ssh version)
   sx --help
 
 config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
+sx adds the host's saved default options (set with Ctrl-O in the TUI) after your own ssh arguments,
+so what you type wins.
 sx skips injection (plain ssh) when you pass a remote command, -N, -T, -W, -O, -Q, -V, -G, -s,
 -f, -n, or -o RemoteCommand, or when the host's profile is off.";
 
@@ -60,7 +63,22 @@ fn main() -> ExitCode {
         _ => {}
     }
 
+    let options = match take_options(&mut args) {
+        Ok(o) => o,
+        Err(msg) => {
+            eprintln!("sx: {msg}");
+            return ExitCode::from(2);
+        }
+    };
     let host = host_arg(&args);
+    match saved_options(&host, options.as_deref()) {
+        Ok(Some(o)) => args = with_options(args, &o),
+        Ok(None) => {}
+        Err(msg) => {
+            eprintln!("sx: {msg}");
+            return ExitCode::from(2);
+        }
+    }
     let ssh_args = prepare_args(args);
     if dry_run {
         println!("ssh {}", ssh_args.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>().join(" "));
@@ -68,6 +86,62 @@ fn main() -> ExitCode {
     }
     // `as u8` would wrap a Windows status such as 0x100 to 0 (success).
     ExitCode::from(u8::try_from(run_and_record(&ssh_args, &host).code()).unwrap_or(1))
+}
+
+/// Removes `--options NAME` (or `--options=NAME`) from anywhere in `args`, up to a `--`, and returns
+/// the name. The last one wins. ssh has no such option, so it cannot be mistaken for one of its own.
+fn take_options(args: &mut Vec<String>) -> Result<Option<String>, String> {
+    let mut name = None;
+    let mut i = 0;
+    while i < args.len() && args[i] != "--" {
+        if args[i] == "--options" {
+            if i + 1 >= args.len() || args[i + 1] == "--" {
+                return Err("--options needs a name".to_string());
+            }
+            name = Some(args.remove(i + 1));
+            args.remove(i);
+        } else if let Some(n) = args[i].strip_prefix("--options=") {
+            name = Some(n.to_string());
+            args.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    Ok(name)
+}
+
+/// The saved options for `host`: the named ones for `name`, else the default ones.
+/// `None` when the host has nothing saved and no name was asked for.
+fn saved_options(host: &str, name: Option<&str>) -> Result<Option<config::ConnOptions>, String> {
+    if host.is_empty() {
+        return Ok(None);
+    }
+    let cfg = config::config_dir().and_then(|d| config::Config::load(&d).ok()).unwrap_or_default();
+    pick_options(&cfg, host, name)
+}
+
+fn pick_options(cfg: &config::Config, host: &str, name: Option<&str>) -> Result<Option<config::ConnOptions>, String> {
+    let key = host_key(cfg, host);
+    let prefs = cfg.hosts.get(&key);
+    match name {
+        None => Ok(prefs.map(config::HostPrefs::default_options).filter(config::ConnOptions::is_set)),
+        Some(name) => match prefs.and_then(|p| p.options.get(name)) {
+            Some(o) => Ok(Some(o.clone())),
+            None => {
+                let have: Vec<&str> = prefs.into_iter().flat_map(|p| p.options.keys().map(String::as_str)).collect();
+                let have = if have.is_empty() { "none saved".to_string() } else { have.join(", ") };
+                Err(format!("{key} has no options named {name:?} ({have})"))
+            }
+        },
+    }
+}
+
+/// Adds the options after the arguments the user typed, so ssh, which keeps the first value of an
+/// option, prefers what was typed. They go before a `--`, after which ssh reads a command.
+fn with_options(mut args: Vec<String>, o: &config::ConnOptions) -> Vec<String> {
+    let at = args.iter().position(|a| a == "--").unwrap_or(args.len());
+    args.splice(at..at, o.ssh_args());
+    args
 }
 
 /// How an `ssh` run ended.

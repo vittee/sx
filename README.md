@@ -57,6 +57,7 @@ On Windows, turn on the optional feature "OpenSSH Client" (Settings, Apps, Optio
 sx                      # open the TUI
 sx user@host            # same arguments as ssh, with your rc injected
 sx -p 2222 -i key host
+sx web --options root   # use the options named root, saved for web (Ctrl-O in the TUI)
 sx --dry-run host       # print the ssh command, do not run it
 sx init                 # create sample snippets and the default profile
 sx init --presets       # add vim presets that are missing, switched off
