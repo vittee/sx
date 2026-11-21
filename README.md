@@ -69,6 +69,16 @@ While the mouse is captured, the terminal cannot select text.<br>
 `F2` hands the mouse back to the terminal and takes it over again on the next press.<br>
 Most terminals also let you select while holding `Shift`.
 
+If the wheel or trackpad scrolls the wrong way (natural scrolling on macOS, for example),
+
+Enable `invert_scroll`
+
+```toml
+# config.toml
+
+invert_scroll = true
+```
+
 ### Hosts page
 
 The list comes from `~/.ssh/config` (with `Include`) and `~/.ssh/known_hosts`.<br>
@@ -217,6 +227,21 @@ so do not put secrets in snippets.
 ```sh
 cargo build --release   # binary: target/release/sx
 cargo test
+```
+
+## Releasing
+
+The changelog is built from the conventional commit messages with [git-cliff](https://git-cliff.org),
+and the release workflow uses the matching section as the GitHub release notes.
+
+```sh
+# set the new version in Cargo.toml, then
+cargo check                                               # updates Cargo.lock
+git cliff --unreleased --tag v0.2.0 --prepend CHANGELOG.md
+git commit -am "chore: release v0.2.0"
+git tag v0.2.0
+git push origin main
+git push origin v0.2.0                                    # push the tag on its own
 ```
 
 ## Releasing

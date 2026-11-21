@@ -89,6 +89,9 @@ pub struct Config {
     pub sort: SortKey,
     #[serde(default, skip_serializing_if = "is_false")]
     pub sort_reverse: bool,
+    /// Reverses the mouse wheel in the TUI, for a trackpad whose terminal reports the opposite way.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub invert_scroll: bool,
     #[serde(default = "default_profile_name")]
     pub default_profile: String,
     #[serde(default)]
@@ -106,6 +109,7 @@ impl Default for Config {
         Config {
             sort: SortKey::default(),
             sort_reverse: false,
+            invert_scroll: false,
             default_profile: default_profile_name(),
             profiles: BTreeMap::new(),
             hosts: BTreeMap::new(),

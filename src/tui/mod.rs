@@ -314,9 +314,10 @@ impl App {
 
     fn on_mouse(&mut self, m: MouseEvent) {
         let (x, y) = (m.column, m.row);
+        let flip = if self.cfg.invert_scroll { -1 } else { 1 };
         let wheel = match m.kind {
-            MouseEventKind::ScrollUp => Some(-1isize),
-            MouseEventKind::ScrollDown => Some(1),
+            MouseEventKind::ScrollUp => Some(-flip),
+            MouseEventKind::ScrollDown => Some(flip),
             _ => None,
         };
         let click = matches!(m.kind, MouseEventKind::Down(MouseButton::Left));

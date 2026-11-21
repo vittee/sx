@@ -179,6 +179,20 @@ fn wheel_moves_selection() {
 }
 
 #[test]
+fn invert_scroll_reverses_the_wheel_and_is_saved() {
+    let (_t, mut app) = app();
+    app.cfg.invert_scroll = true;
+    app.cfg.save(&app.dir).unwrap();
+    render(&mut app);
+    wheel(&mut app, 5, 10, true); // up now moves the selection down
+    wheel(&mut app, 5, 10, true);
+    assert_eq!(app.host_state.selected(), Some(2));
+    wheel(&mut app, 5, 10, false);
+    assert_eq!(app.host_state.selected(), Some(1));
+    assert!(Config::load(&app.dir).unwrap().invert_scroll);
+}
+
+#[test]
 fn clicking_tabs_switches_screens() {
     let (_t, mut app) = app();
     render(&mut app);
