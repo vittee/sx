@@ -90,6 +90,9 @@ fn main() -> ExitCode {
         println!("ssh {}", ssh_args.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>().join(" "));
         return ExitCode::SUCCESS;
     }
+    if let Some(dir) = config::config_dir() {
+        mark_used(&dir, &host);
+    }
     // `as u8` would wrap a Windows status such as 0x100 to 0 (success).
     ExitCode::from(u8::try_from(run_and_record(&ssh_args, &host).code()).unwrap_or(1))
 }
@@ -114,6 +117,21 @@ fn take_options(args: &mut Vec<String>) -> Result<Option<String>, String> {
         }
     }
     Ok(name)
+}
+
+/// Records that `host` was connected to, so "last used" in the TUI counts connections made from the
+/// command line too. A missing or unreadable config is left alone.
+fn mark_used(dir: &std::path::Path, host: &str) {
+    // Writing a config here would make `sx init` think the sample snippets exist already.
+    if host.is_empty() || !dir.join("config.toml").is_file() {
+        return;
+    }
+    let Ok(mut cfg) = config::Config::load(dir) else { return };
+    let key = host_key(&cfg, host);
+    cfg.mark_used(&key);
+    if let Err(e) = cfg.save(dir) {
+        log::warn(format!("cannot save the last used time: {e}"));
+    }
 }
 
 /// The saved options for `host`: the named ones for `name`, else the default ones.

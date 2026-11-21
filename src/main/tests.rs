@@ -60,6 +60,19 @@ fn options_flag_is_taken_from_any_position() {
 }
 
 #[test]
+fn a_connection_from_the_command_line_sets_last_used() {
+    let tmp = tempfile::tempdir().unwrap();
+    config::Config::default().save(tmp.path()).unwrap();
+    mark_used(tmp.path(), "me@web");
+    let cfg = config::Config::load(tmp.path()).unwrap();
+    assert!(cfg.hosts.get("web").and_then(|p| p.last_used).is_some(), "the user@ prefix is not part of the host");
+    // No config yet: nothing is created.
+    let empty = tempfile::tempdir().unwrap();
+    mark_used(&empty.path().join("none"), "web");
+    assert!(!empty.path().join("none").exists());
+}
+
+#[test]
 fn version_line_names_the_crate_version() {
     assert_eq!(version_line(), format!("sx {}", env!("CARGO_PKG_VERSION")));
 }
