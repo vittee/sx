@@ -1,5 +1,6 @@
 mod bootstrap;
 mod config;
+mod editor;
 mod highlight;
 mod history;
 mod log;
