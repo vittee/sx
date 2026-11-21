@@ -23,13 +23,33 @@ Details are under [How it works](#how-it-works).
 Quick start:
 
 ```sh
-cargo build --release   # binary: target/release/sx
 sx init                 # create sample snippets and the default profile
 sx user@host            # log in with your rc
 sx                      # or open the TUI
 ```
 
-Requires bash on the server, see [Limits](#limits).
+Needs `ssh` on your `PATH` and bash on the server, see [Install](#install) and [Limits](#limits).
+
+## Install
+
+Linux and macOS:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/vittee/sx/releases/latest/download/sx-ssh-installer.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/vittee/sx/releases/latest/download/sx-ssh-installer.ps1 | iex"
+```
+
+Or download an archive from the [releases page](https://github.com/vittee/sx/releases),
+or build it yourself, see [Build](#build).
+
+`sx` runs the `ssh` it finds on your `PATH`.
+Linux and macOS ship it.
+On Windows, turn on the optional feature "OpenSSH Client" (Settings, Apps, Optional features).
 
 ## Usage
 
