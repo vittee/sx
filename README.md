@@ -97,20 +97,9 @@ connection only.
 - `Ctrl-F`, or a click on the star, marks a favorite.
 - `Ctrl-E` picks extra snippets for the selected host on top of its profile's.
   The profile column then reads `default+2`.
-- `Ctrl-O` sets connection options for the selected host: user, port, identity file, jump host,
-  and extra ssh arguments such as `-o ForwardAgent=yes`.
-  `Enter` connects with them this time only, `Ctrl-S` saves them for the host.
-  New named options that you connect with straight away are saved too.
-  A host can keep several named options, for example `root` and `deploy via bastion`:
-  `Ctrl-N` adds one (a copy of the ones on screen), `Left`/`Right` switch between them,
-  `Ctrl-R` renames the ones on screen, and `Ctrl-D` deletes them.
-  With many names the row scrolls, and `‹` and `›` mark the hidden ones.
-  `Esc` or a click outside asks before it throws away unsaved changes (the title says `unsaved`).
-  The form takes the mouse too: click a field, an options name or a key hint, drag the title bar to move it (the `Ctrl-L` picker moves the same way), and click outside to close it.
-- `Ctrl-L` picks one of the host's named options and connects with them (a click on one connects too).
-  A plain `Enter` on the list uses the default options.
-  Saved options are kept in `config.toml` and passed to ssh on connect, so `~/.ssh/config` is never changed.
-  Empty fields change nothing, and the target column turns magenta for a host with saved options.
+- `Ctrl-O` edits the connection options of the selected host.
+  A host can keep several named options, such as `root` or `deploy via bastion`, and the form lists its keys.
+- `Ctrl-L` picks one of the host's named options and connects with them.
 
 To sort, click a column header (click again to reverse),
 or press `Ctrl-S` to cycle the column and `Ctrl-R` to reverse.
