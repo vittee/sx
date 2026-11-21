@@ -171,6 +171,36 @@ fn a_ps1_string_that_calls_the_helpers_gets_them() {
 }
 
 #[test]
+fn the_helpers_are_exported_only_when_the_prompt_defines_them() {
+    assert_eq!(export_helpers(&script_for("\\w$(__sx_git)$(__sx_rc) \\$ ")), "export -f __sx_git __sx_rc\n");
+    assert_eq!(export_helpers(theme("git-branch").unwrap()), "export -f __sx_git\n");
+    assert_eq!(export_helpers(theme("minimal").unwrap()), "");
+}
+
+#[test]
+fn a_shell_started_from_the_prompt_shell_still_finds_the_helpers() {
+    // What a tmux pane does: a new interactive bash that inherits the exported PS1.
+    let Ok(bash) = std::process::Command::new("bash").arg("--version").output() else { return };
+    if !bash.status.success() {
+        return;
+    }
+    let theme = theme("git-branch").unwrap();
+    let script = format!("{theme}{}\nbash --norc -i -c 'echo \"${{PS1@P}}\"'\n", export_helpers(theme));
+    use std::io::Write;
+    let mut child = std::process::Command::new("bash")
+        .arg("-s")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("command not found"), "{err}");
+}
+
+#[test]
 fn a_prompt_file_that_is_bash_is_used_as_it_is() {
     let bash = "alias x=y\nexport PS1='a> '\n";
     assert!(is_script(bash));

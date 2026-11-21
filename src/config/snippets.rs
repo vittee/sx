@@ -187,6 +187,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
         if !text.ends_with('\n') {
             out.push('\n');
         }
+        out.push_str(&prompt::export_helpers(&text));
     }
     out
 }

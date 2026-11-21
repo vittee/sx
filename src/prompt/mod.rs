@@ -205,6 +205,14 @@ pub fn file_ps1(text: &str) -> Option<String> {
     (!ps1.trim().is_empty()).then(|| ps1.to_string())
 }
 
+/// `export -f` for the helper functions that a prompt script defines. The scripts export `PS1`, so a
+/// shell started from this one (a tmux pane, a nested bash) gets the prompt with its `$(__sx_git)`
+/// calls, and needs the functions too or it prints `command not found` before every prompt.
+pub fn export_helpers(script: &str) -> String {
+    let names: Vec<&str> = ["__sx_git", "__sx_rc"].into_iter().filter(|f| script.contains(&format!("{f}() {{"))).collect();
+    if names.is_empty() { String::new() } else { format!("export -f {}\n", names.join(" ")) }
+}
+
 /// Bash that sets the prompt from a `.prompt` file. A file that already is bash is returned as it
 /// is. A plain PS1 string is single-quoted into `export PS1='...'`, with the git and exit-status
 /// helper functions added when the string calls them.
