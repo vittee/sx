@@ -205,3 +205,11 @@ fn a_ctrl_c_seen_by_sx_is_an_interrupt_whatever_ssh_returns() {
     assert_eq!(finish(false, status(7)), SshOutcome::Exited(7));
     assert_eq!(finish(false, status(130)), SshOutcome::Exited(130));
 }
+
+#[test]
+fn help_names_the_config_directory() {
+    let text = help_text();
+    assert!(!text.contains("{config}"), "{text}");
+    let line = text.lines().find(|l| l.starts_with("Config: ")).expect("a Config line");
+    assert!(line.len() > "Config: ".len());
+}

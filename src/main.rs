@@ -15,6 +15,18 @@ use std::env;
 use std::process::{Command, ExitCode};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// The help with the config directory sx uses right now, and why it picked that one.
+fn help_text() -> String {
+    let dir = match config::config_dir() {
+        Some(d) => {
+            let why = if env::var_os("SX_HOME").is_some() { "$SX_HOME" } else { "default, set $SX_HOME to change it" };
+            format!("{} ({why})", d.display())
+        }
+        None => "not found: set $SX_HOME (HOME and USERPROFILE are unset)".to_string(),
+    };
+    HELP.replace("{config}", &dir)
+}
+
 const HELP: &str = "\
 sx: run ssh with your own shell rc (prompt, aliases) on the server.
 
@@ -31,7 +43,7 @@ Usage:
   sx --version                                                print the sx version (ssh's own -V shows the ssh version)
   sx --help
 
-Config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
+Config: {config}
 ";
 
 /// ssh options that take a value.
@@ -53,7 +65,7 @@ fn main() -> ExitCode {
         Some("completions") => return completions::print(&args[1..]),
         Some("__complete") => return completions::run(&args[1..]),
         Some("--help") => {
-            println!("{}", help::paint(HELP, log::stdout_color()));
+            println!("{}", help::paint(&help_text(), log::stdout_color()));
             return ExitCode::SUCCESS;
         }
         Some("--version") => {
