@@ -194,6 +194,20 @@ fn the_hints_do_not_move_when_the_key_hint_appears() {
 }
 
 #[test]
+fn the_cursor_follows_a_host_that_moves_after_a_connection() {
+    let (_t, mut a) = app();
+    a.cfg.sort = SortKey::LastUsed;
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down); // gamma, the last row
+    let alias = |a: &App| a.selected_host().map(|i| a.hosts[i].alias.clone());
+    assert_eq!(alias(&a).as_deref(), Some("gamma"));
+    a.note_connected("gamma");
+    assert_eq!(a.visible().first().map(|&i| a.hosts[i].alias.as_str()), Some("gamma"), "gamma should be on top");
+    assert_eq!(alias(&a).as_deref(), Some("gamma"));
+    assert_eq!(a.host_state.selected(), Some(0));
+}
+
+#[test]
 fn title_shows_the_version() {
     let (_t, mut a) = app();
     let screen = render(&mut a);

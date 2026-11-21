@@ -135,14 +135,29 @@ impl App {
 
     /// Applies a sort change, saves it, and keeps the same host selected.
     pub(super) fn change_sort(&mut self, f: impl FnOnce(&mut Config)) {
+        self.keep_host_selected(|app| {
+            f(&mut app.cfg);
+            app.save_cfg();
+        });
+    }
+
+    /// Runs `f`, which may reorder the list, and leaves the cursor on the host it was on.
+    pub(super) fn keep_host_selected(&mut self, f: impl FnOnce(&mut App)) {
         let keep = self.selected_host().map(|i| self.hosts[i].alias.clone());
-        f(&mut self.cfg);
-        self.save_cfg();
+        f(self);
         let vis = self.visible();
         let pos = keep
             .and_then(|alias| vis.iter().position(|&i| self.hosts[i].alias == alias))
             .unwrap_or(0);
         self.host_state.select(Some(pos));
+    }
+
+    /// Records a connection to `host`. Under "last used" the host moves to the top, and the cursor goes with it.
+    pub(super) fn note_connected(&mut self, host: &str) {
+        self.keep_host_selected(|app| {
+            app.cfg.mark_used(host);
+            app.save_cfg();
+        });
     }
 
     /// Header click: pick a column, or reverse it when it is already the sort column.

@@ -86,8 +86,7 @@ fn cursor_pos() -> Option<(u16, u16)> {
 /// Leaves the TUI, runs ssh in the normal terminal, then comes back.
 pub(super) fn connect(term: &mut DefaultTerminal, app: &mut App, args: Vec<String>) -> io::Result<()> {
     let host = crate::host_arg(&args);
-    app.cfg.mark_used(&host);
-    app.save_cfg();
+    app.note_connected(&host);
 
     keep_sx_alive_on_ctrl_c();
     leave();
