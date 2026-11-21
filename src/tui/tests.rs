@@ -82,6 +82,13 @@ fn squash(screen: &str) -> String {
     screen.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+#[test]
+fn title_shows_the_version() {
+    let (_t, mut a) = app();
+    let screen = render(&mut a);
+    assert!(screen.contains(&format!(" sx {} ", env!("CARGO_PKG_VERSION"))), "{screen}");
+}
+
 fn typed(app: &mut App, s: &str) {
     s.chars().for_each(|c| key(app, KeyCode::Char(c)));
 }

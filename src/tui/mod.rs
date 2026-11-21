@@ -403,7 +403,7 @@ impl App {
     }
 
     fn draw_tabs(&mut self, f: &mut Frame, area: Rect) {
-        let block = Block::bordered().title(" sx ");
+        let block = Block::bordered().title(format!(" sx {} ", env!("CARGO_PKG_VERSION")));
         let inner = block.inner(area);
         let tabs = Tabs::new(TAB_TITLES)
             .select(self.tab.index())

@@ -60,6 +60,7 @@ sx -p 2222 -i key host
 sx --dry-run host       # print the ssh command, do not run it
 sx init                 # create sample snippets and the default profile
 sx init --presets       # add vim presets that are missing, switched off
+sx --version            # print the sx version (ssh's -V shows the ssh one)
 ```
 
 ## TUI

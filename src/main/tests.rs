@@ -10,6 +10,11 @@ fn inject(line: &str) -> bool {
 }
 
 #[test]
+fn version_line_names_the_crate_version() {
+    assert_eq!(version_line(), format!("sx {}", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn plain_login_injects() {
     assert!(inject("host"));
     assert!(inject("user@host"));

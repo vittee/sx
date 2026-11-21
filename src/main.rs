@@ -22,6 +22,7 @@ usage:
   sx init                create the sample snippets and default profile
   sx init --presets      add the vim presets that are missing, switched off
   sx --dry-run [...]     print the ssh command instead of running it
+  sx --version           print the sx version (ssh's own -V shows the ssh version)
   sx --help
 
 config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
@@ -33,6 +34,10 @@ const OPTS_WITH_VALUE: &str = "BbcDEeFIiJLlmOopQRSWw";
 /// ssh options after which an interactive remote shell is not wanted.
 const OPTS_NO_SHELL: &str = "NWOQVGsTfn";
 
+fn version_line() -> String {
+    format!("sx {}", env!("CARGO_PKG_VERSION"))
+}
+
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut dry_run = false;
@@ -42,6 +47,10 @@ fn main() -> ExitCode {
         Some("init") => return init(&args[1..]),
         Some("--help") => {
             println!("{HELP}");
+            return ExitCode::SUCCESS;
+        }
+        Some("--version") => {
+            println!("{}", version_line());
             return ExitCode::SUCCESS;
         }
         Some("--dry-run") => {
