@@ -1,0 +1,187 @@
+use super::*;
+
+fn kinds(src: &str) -> Vec<(String, Kind)> {
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    let hl = highlight(&lines);
+    let mut res = Vec::new();
+    for (l, k) in lines.iter().zip(hl) {
+        let chars: Vec<char> = l.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let mut j = i;
+            while j < chars.len() && k[j] == k[i] {
+                j += 1;
+            }
+            let text: String = chars[i..j].iter().collect();
+            if !text.trim().is_empty() {
+                res.push((text.trim().to_string(), k[i]));
+            }
+            i = j;
+        }
+    }
+    res
+}
+
+fn has(src: &str, text: &str, kind: Kind) -> bool {
+    kinds(src).iter().any(|(t, k)| t == text && *k == kind)
+}
+
+#[test]
+fn one_kind_per_char() {
+    let lines = vec!["echo \"héllo $USER\" # ✓".to_string(), String::new()];
+    let hl = highlight(&lines);
+    assert_eq!(hl[0].len(), lines[0].chars().count());
+    assert!(hl[1].is_empty());
+}
+
+#[test]
+fn comments() {
+    assert!(has("# hello world", "# hello world", Kind::Comment));
+    assert!(has("ls # trailing", "# trailing", Kind::Comment));
+    // # inside a word or a string or $# is not a comment
+    assert!(has("echo a#b", "a#b", Kind::Plain));
+    assert!(!kinds("echo \"# no\"").iter().any(|(_, k)| *k == Kind::Comment));
+    assert!(has("echo $#", "$#", Kind::Var));
+}
+
+#[test]
+fn strings_and_expansions() {
+    assert!(has("echo 'a $b'", "'a $b'", Kind::Str));
+    let k = kinds("echo \"hi $USER and ${HOME}\"");
+    assert!(k.contains(&("$USER".to_string(), Kind::Var)));
+    assert!(k.contains(&("${HOME}".to_string(), Kind::Var)));
+    assert!(k.iter().any(|(t, kind)| *kind == Kind::Str && t.starts_with("\"hi")));
+}
+
+#[test]
+fn quote_can_span_lines() {
+    let k = kinds("echo 'one\ntwo # not a comment\nthree' ls");
+    assert!(!k.iter().any(|(_, kind)| *kind == Kind::Comment), "{k:?}");
+    assert!(k.contains(&("two # not a comment".to_string(), Kind::Str)));
+    // after the quote closes we are back in code
+    assert!(k.iter().any(|(t, kind)| t.contains("ls") && *kind == Kind::Plain));
+}
+
+#[test]
+fn keywords_builtins_functions() {
+    let src = "if [ -f x ]; then\n  export A=1\nfi\nmyfn() {\n  cd /tmp\n}\nfunction other { :; }";
+    for kw in ["if", "then", "fi"] {
+        assert!(has(src, kw, Kind::Keyword), "{kw}");
+    }
+    assert!(has(src, "export", Kind::Builtin));
+    assert!(has(src, "cd", Kind::Builtin));
+    assert!(has(src, "myfn", Kind::Func));
+    assert!(has(src, "other", Kind::Func));
+    assert!(has(src, "A", Kind::Var), "assignment name");
+}
+
+#[test]
+fn command_arguments_are_not_builtins() {
+    // `echo` is a builtin, but `cd` as an argument is plain
+    let k = kinds("echo cd");
+    assert!(k.contains(&("echo".into(), Kind::Builtin)));
+    assert!(k.contains(&("cd".into(), Kind::Plain)));
+}
+
+#[test]
+fn alias_lines_and_operators() {
+    let k = kinds("alias ll='ls -alF' && ls | wc -l > out");
+    assert!(k.contains(&("alias".into(), Kind::Builtin)));
+    assert!(k.contains(&("ll".into(), Kind::Var)));
+    assert!(k.contains(&("'ls -alF'".into(), Kind::Str)));
+    assert!(k.iter().any(|(t, kind)| t.contains("&&") && *kind == Kind::Op));
+    assert!(k.iter().any(|(t, kind)| t == "|" && *kind == Kind::Op));
+}
+
+#[test]
+fn prompt_theme_snippets_highlight_without_panicking() {
+    for (name, text) in crate::prompt::THEMES {
+        let lines: Vec<String> = text.lines().map(String::from).collect();
+        let hl = highlight(&lines);
+        assert_eq!(hl.len(), lines.len(), "{name}");
+        for (l, k) in lines.iter().zip(&hl) {
+            assert_eq!(l.chars().count(), k.len(), "{name}");
+        }
+    }
+}
+
+#[test]
+fn ps1_parts_get_their_own_kinds() {
+    let src = r"\[\e[1;32m\]\u@\h\[\e[0m\]:\w$(__sx_git) \$ ";
+    let k = &highlight_ps1(&[src.to_string()])[0];
+    let chars: Vec<char> = src.chars().collect();
+    assert_eq!(k.len(), chars.len());
+    let at = |needle: &str| {
+        let n: Vec<char> = needle.chars().collect();
+        let p = chars.windows(n.len()).position(|w| w == &n[..]).unwrap();
+        k[p..p + n.len()].to_vec()
+    };
+    assert!(at(r"\[").iter().all(|x| *x == Kind::Comment));
+    assert!(at(r"\e[1;32m").iter().all(|x| *x == Kind::Number));
+    assert!(at(r"\u").iter().all(|x| *x == Kind::Keyword));
+    assert!(at(r"\h").iter().all(|x| *x == Kind::Keyword));
+    assert!(at("$(__sx_git)").iter().all(|x| *x == Kind::Var));
+    assert!(at(r"\$").iter().all(|x| *x == Kind::Keyword));
+    assert_eq!(at("@"), [Kind::Plain]);
+}
+
+#[test]
+fn ps1_highlighting_covers_every_character_even_when_cut_short() {
+    for src in [r"\", r"\e[", r"\e[1;3", "$(", "$", r"\033[0m", r"a\"] {
+        let k = &highlight_ps1(&[src.to_string()])[0];
+        assert_eq!(k.len(), src.chars().count(), "{src}");
+    }
+}
+
+fn vim(src: &str) -> Vec<Kind> {
+    highlight_vim(&[src.to_string()]).remove(0)
+}
+
+fn vim_kind_of(src: &str, needle: &str) -> Vec<Kind> {
+    let chars: Vec<char> = src.chars().collect();
+    let n: Vec<char> = needle.chars().collect();
+    let p = chars.windows(n.len()).position(|w| w == &n[..]).unwrap();
+    vim(src)[p..p + n.len()].to_vec()
+}
+
+#[test]
+fn vim_comment_lines_and_trailing_comments() {
+    assert!(vim("\" a comment").iter().all(|k| *k == Kind::Comment));
+    assert!(vim("  \" indented")[2..].iter().all(|k| *k == Kind::Comment));
+    assert!(vim_kind_of("set number \" trailing", "\" trailing").iter().all(|k| *k == Kind::Comment));
+}
+
+#[test]
+fn vim_set_lines() {
+    let src = "set shiftwidth=2 nocompatible";
+    assert!(vim_kind_of(src, "set").iter().all(|k| *k == Kind::Keyword));
+    assert!(vim_kind_of(src, "shiftwidth").iter().all(|k| *k == Kind::Var));
+    assert_eq!(vim_kind_of(src, "="), [Kind::Op]);
+    assert_eq!(vim_kind_of(src, "2"), [Kind::Number]);
+    assert!(vim_kind_of(src, "nocompatible").iter().all(|k| *k == Kind::Var));
+    let src = "set listchars+=tab:>-";
+    assert_eq!(vim_kind_of(src, "+="), [Kind::Op, Kind::Op]);
+    assert!(vim_kind_of(src, "tab:").iter().all(|k| *k == Kind::Plain), "values are plain");
+}
+
+#[test]
+fn vim_maps_keys_and_strings() {
+    let src = "silent! nnoremap <silent> <leader>w :w<CR>";
+    assert!(vim_kind_of(src, "silent!").iter().all(|k| *k == Kind::Keyword));
+    assert!(vim_kind_of(src, "nnoremap").iter().all(|k| *k == Kind::Keyword));
+    assert!(vim_kind_of(src, "<silent>").iter().all(|k| *k == Kind::Op));
+    assert!(vim_kind_of(src, "<CR>").iter().all(|k| *k == Kind::Op));
+    let src = "let mapleader = ' '";
+    assert!(vim_kind_of(src, "mapleader").iter().all(|k| *k == Kind::Var));
+    assert!(vim_kind_of(src, "' '").iter().all(|k| *k == Kind::Str));
+    let src = "echo \"hi\" \" note";
+    assert!(vim_kind_of(src, "\"hi\"").iter().all(|k| *k == Kind::Str));
+    assert!(vim_kind_of(src, "\" note").iter().all(|k| *k == Kind::Comment));
+}
+
+#[test]
+fn vim_highlighting_covers_every_character() {
+    for src in ["", "\"", "'", "<", "<a", "set", "set a=", "silent!", "if has('clipboard')", "x <"] {
+        assert_eq!(vim(src).len(), src.chars().count(), "{src}");
+    }
+}
