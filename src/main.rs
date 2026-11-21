@@ -1,4 +1,5 @@
 mod bootstrap;
+mod completions;
 mod config;
 mod editor;
 mod highlight;
@@ -16,14 +17,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const HELP: &str = "\
 sx: run ssh with your own shell rc (prompt, aliases) on the server.
 
-usage:
-  sx                     open the TUI (hosts, snippets, profiles)
-  sx [ssh args] host     like ssh, but the remote bash loads your rc
-  sx init                create the sample snippets and default profile
-  sx init --presets      add the vim presets that are missing, switched off
-  sx host --options NAME use the host's saved options NAME (anywhere in the arguments)
-  sx --dry-run [...]     print the ssh command instead of running it
-  sx --version           print the sx version (ssh's own -V shows the ssh version)
+usage:  ([] is optional, <> is required)
+  sx                                                          open the TUI (hosts, snippets, profiles)
+  sx [ssh args] <host>                                        like ssh, but the remote bash loads your rc
+  sx <host> --options <name>                                  use the host's saved options <name> (anywhere in the arguments)
+  sx init [--presets]                                         create the sample snippets and default profile,
+                                                              --presets adds the vim presets that are missing, switched off
+  sx --dry-run [ssh args] <host>                              print the ssh command instead of running it
+  sx completions <bash|zsh|fish|powershell|nushell>           print the completion script
+  sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]
+                                                              set the completion up for your shell (asks first)
+  sx --version                                                print the sx version (ssh's own -V shows the ssh version)
   sx --help
 
 config: $SX_HOME, else ~/.config/sx (snippets/*.sh, config.toml)
@@ -48,6 +52,8 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         None => return tui::run(),
         Some("init") => return init(&args[1..]),
+        Some("completions") => return completions::print(&args[1..]),
+        Some("__complete") => return completions::run(&args[1..]),
         Some("--help") => {
             println!("{HELP}");
             return ExitCode::SUCCESS;
@@ -236,7 +242,10 @@ fn init(rest: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     match config::ensure_initialized(&dir) {
-        Ok((_, true)) => log::ok_out(format!("created snippets and default profile in {}", dir.display())),
+        Ok((_, true)) => {
+            log::ok_out(format!("created snippets and default profile in {}", dir.display()));
+            log::info("tip: sx completions --install sets up shell completion");
+        }
         Ok((_, false)) => log::ok_out(format!("{} already set up, left unchanged", dir.display())),
         Err(e) => {
             log::error(e.to_string());

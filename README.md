@@ -47,6 +47,8 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/vittee/sx/releases
 Or download an archive from the [releases page](https://github.com/vittee/sx/releases),
 or build it yourself, see [Build](#build).
 
+For shell completion, see [Usage](#usage).
+
 `sx` runs the `ssh` it finds on your `PATH`.
 Linux and macOS ship it.
 On Windows, turn on the optional feature "OpenSSH Client" (Settings, Apps, Optional features).
@@ -54,14 +56,14 @@ On Windows, turn on the optional feature "OpenSSH Client" (Settings, Apps, Optio
 ## Usage
 
 ```sh
-sx                      # open the TUI
-sx user@host            # same arguments as ssh, with your rc injected
-sx -p 2222 -i key host
-sx web --options root   # use the options named root, saved for web (Ctrl-O in the TUI)
-sx --dry-run host       # print the ssh command, do not run it
-sx init                 # create sample snippets and the default profile
-sx init --presets       # add vim presets that are missing, switched off
-sx --version            # print the sx version (ssh's -V shows the ssh one)
+sx                                                                   # open the TUI
+sx [ssh args] <host>                                                 # like ssh, with your rc injected
+sx <host> --options <name>                                           # use the options named <name>, saved for the host (Ctrl-O in the TUI)
+sx --dry-run [ssh args] <host>                                       # print the ssh command, do not run it
+sx init [--presets]                                                  # create sample snippets and the default profile, --presets adds the vim presets that are missing, switched off
+sx completions <bash|zsh|fish|powershell|nushell>                    # print a completion script
+sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]  # set up shell completion (asks first)
+sx --version                                                         # print the sx version (ssh's -V shows the ssh one)
 ```
 
 ## TUI
