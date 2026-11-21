@@ -91,7 +91,7 @@ to keep the server's prompt.
 
 #### Keys
 - `n` creates a profile
-- `c` copy,
+- `c` copy
 - `d` delete
 - `*` makes it the default
 
