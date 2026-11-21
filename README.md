@@ -9,6 +9,8 @@ Nothing is installed or written on the server, and nothing is left behind when t
 
 Details are under [How it works](#how-it-works).
 
+![sx in action: connect from the TUI, switch theme, then plain ssh next to sx](demo/sx.gif)
+
 ## What you get:
 
 - Your prompt and aliases on every server, from small snippet files you keep locally.

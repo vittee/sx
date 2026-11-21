@@ -7,3 +7,7 @@
 *.swp
 .DS_Store
 Thumbs.db
+
+# Demo recording: keys are generated, screenshots are scratch
+/demo/.keys/
+/demo/*.png

@@ -1,0 +1,7 @@
+Host web1 web2 db1
+    HostName server
+    User demo
+    IdentityFile ~/.ssh/id_ed25519
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
