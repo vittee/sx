@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.3.0 - 2026-11-21
+
+### Features
+
+- Show the version with --version and in the TUI title
+- Pick the identity file from the keys in ~/.ssh with Ctrl-K
+- Use saved options from the command line, with --options <name>
+- Size the host, target and profile columns to the terminal
+- Add shell completion with sx completions
+- Color the help text
+- Show the config directory in the help text
+
+### Fixes
+
+- Keep the cursor on the host after a connection re-sorts the list
+- Export the prompt helper functions so tmux panes find them
+- Update last used for connections made from the command line
+
 ## v0.2.0 - 2026-11-21
 
 - Per-host connection options in the TUI.
