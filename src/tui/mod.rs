@@ -106,6 +106,8 @@ struct Hits {
     form_fields: Rect,
     form_options: Vec<(Rect, Option<String>)>,
     form_keys: Vec<(Rect, KeyEvent)>,
+    /// Widths of the host list's adaptive columns, as last drawn.
+    cols: hosts::Cols,
     /// The open list of private keys under the identity field: row, key path.
     form_keylist: Vec<(Rect, String)>,
     /// The options picker: its frame and its rows.

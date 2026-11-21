@@ -2,7 +2,8 @@
 
 use super::*;
 
-// Column widths in the hosts list.
+// Column widths in the hosts list. The host, target and profile columns have these as their
+// smallest width and grow with their content when the terminal is wide enough, see `Cols`.
 pub(super) const COL_STAR: u16 = 2;
 
 pub(super) const COL_ALIAS: u16 = 22;
@@ -14,17 +15,52 @@ pub(super) const COL_PROFILE: u16 = 12;
 /// Wide enough for `known_hosts`.
 pub(super) const COL_SOURCE: u16 = 12;
 
+const COL_USED: u16 = 12;
+
+/// The widths of the columns that adapt to the terminal and the hosts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Cols {
+    pub alias: u16,
+    pub target: u16,
+    pub profile: u16,
+}
+
+impl Default for Cols {
+    fn default() -> Cols {
+        Cols { alias: COL_ALIAS, target: COL_TARGET, profile: COL_PROFILE }
+    }
+}
+
+impl Cols {
+    /// Starts from the smallest widths and shares the room left over in `width` among the columns
+    /// whose longest entry (`want`, with two spaces of gap) does not fit yet, each in proportion to what it lacks.
+    pub(super) fn fit(width: u16, want: [u16; 3]) -> Cols {
+        let min = Cols::default();
+        let min = [min.alias, min.target, min.profile];
+        let room = width.saturating_sub(COL_STAR + COL_SOURCE + COL_USED);
+        let extra = u32::from(room.saturating_sub(min.iter().sum()));
+        let lack: Vec<u32> = (0..3).map(|i| u32::from(want[i].saturating_sub(min[i]))).collect();
+        let total: u32 = lack.iter().sum();
+        let grant = |i: usize| (lack[i] * extra.min(total) / total.max(1)) as u16;
+        Cols { alias: min[0] + grant(0), target: min[1] + grant(1), profile: min[2] + grant(2) }
+    }
+}
+
 /// Which sort a click at `col` (relative to the header's left edge) selects.
-pub(super) fn sort_key_at(col: u16) -> SortKey {
-    if col < COL_STAR {
+pub(super) fn sort_key_at(col: u16, cols: Cols) -> SortKey {
+    let host = COL_STAR;
+    let target = host + cols.alias;
+    let profile = target + cols.target;
+    let source = profile + cols.profile;
+    if col < host {
         SortKey::Smart
-    } else if col < COL_STAR + COL_ALIAS {
+    } else if col < target {
         SortKey::Host
-    } else if col < COL_STAR + COL_ALIAS + COL_TARGET {
+    } else if col < profile {
         SortKey::Target
-    } else if col < COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE {
+    } else if col < source {
         SortKey::Profile
-    } else if col < COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_SOURCE {
+    } else if col < source + COL_SOURCE {
         SortKey::Source
     } else {
         SortKey::LastUsed
@@ -309,7 +345,7 @@ impl App {
         }
         let (head, list) = (self.hits.hosts_head, self.hits.hosts_list);
         if click && inside(head, x, y) {
-            return self.click_sort(sort_key_at(x - head.x));
+            return self.click_sort(sort_key_at(x - head.x, self.hits.cols));
         }
         if !click || !inside(list, x, y) {
             return;
@@ -320,9 +356,10 @@ impl App {
         }
         self.host_state.select(Some(i));
         let col = x - list.x;
+        let cols = self.hits.cols;
         if col < COL_STAR {
             self.toggle_favorite_of_selected();
-        } else if (COL_STAR + COL_ALIAS + COL_TARGET..COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE).contains(&col) {
+        } else if (COL_STAR + cols.alias + cols.target..COL_STAR + cols.alias + cols.target + cols.profile).contains(&col) {
             self.cycle_profile_of_selected(true);
         } else if self.is_double_click(Tab::Hosts, i) {
             self.connect_selected();
@@ -403,6 +440,7 @@ impl App {
         let [head_a, rows_a] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
         self.hits.hosts_list = rows_a;
         self.hits.hosts_head = head_a;
+        self.hits.cols = self.fit_cols(rows_a.width);
         f.render_widget(Paragraph::new(self.header_line()), head_a);
 
         if vis.is_empty() {
@@ -415,6 +453,7 @@ impl App {
             return;
         }
 
+        let cols = self.hits.cols;
         let items: Vec<ListItem> = vis
             .iter()
             .map(|&i| {
@@ -424,7 +463,7 @@ impl App {
                 let base = self.cfg.profile_for(&h.alias).unwrap_or("off");
                 let off = base == "off";
                 let extras = self.cfg.host_snippets(&h.alias).len();
-                let profile = &if extras > 0 && !off { format!("{base}+{extras}") } else { base.to_string() };
+                let profile = &Self::profile_text(base, extras);
                 let used = prefs.and_then(|p| p.last_used).map(ago).unwrap_or_default();
                 // Cyan marks a host whose connection options are set (Ctrl-O).
                 let target_style = if prefs.is_some_and(|p| p.has_overrides()) {
@@ -434,10 +473,10 @@ impl App {
                 };
                 ListItem::new(Line::from(vec![
                     Span::styled(truncate(if fav { "★" } else { "" }, COL_STAR), Style::new().fg(Color::Yellow)),
-                    Span::raw(truncate(&h.alias, COL_ALIAS)),
-                    Span::styled(truncate(&self.target_of(h), COL_TARGET), target_style),
+                    Span::raw(truncate(&h.alias, cols.alias)),
+                    Span::styled(truncate(&self.target_of(h), cols.target), target_style),
                     Span::styled(
-                        truncate(profile, COL_PROFILE),
+                        truncate(profile, cols.profile),
                         Style::new().fg(if off { Color::DarkGray } else { Color::Green }),
                     ),
                     Span::styled(truncate(h.source.label(), COL_SOURCE), Style::new().add_modifier(Modifier::DIM)),
@@ -479,6 +518,26 @@ impl App {
         f.render_widget(Paragraph::new(lines).block(Block::bordered().title(title)), area);
     }
 
+    /// `base`, or `base+N` when the host has N extra snippets.
+    fn profile_text(base: &str, extras: usize) -> String {
+        if extras > 0 && base != "off" { format!("{base}+{extras}") } else { base.to_string() }
+    }
+
+    /// The widths of the host, target and profile columns for a list `width` wide. They follow the
+    /// longest entry over all hosts, so they stay put while the search narrows the list.
+    pub(super) fn fit_cols(&self, width: u16) -> Cols {
+        let chars = |s: &str| s.chars().count() as u16 + 2;
+        let mut want = [0u16; 3];
+        for h in &self.hosts {
+            let base = self.cfg.profile_for(&h.alias).unwrap_or("off");
+            let profile = Self::profile_text(base, self.cfg.host_snippets(&h.alias).len());
+            want[0] = want[0].max(chars(&h.alias));
+            want[1] = want[1].max(chars(&self.target_of(h)));
+            want[2] = want[2].max(chars(&profile));
+        }
+        Cols::fit(width, want)
+    }
+
     /// Column headers; the active sort column is highlighted and carries an arrow.
     pub(super) fn header_line(&self) -> Line<'static> {
         let arrow = if self.sort_descending() { " ▼" } else { " ▲" };
@@ -494,11 +553,11 @@ impl App {
         };
         Line::from(vec![
             cell(SortKey::Smart, "★", COL_STAR),
-            cell(SortKey::Host, "host", COL_ALIAS),
-            cell(SortKey::Target, "target", COL_TARGET),
-            cell(SortKey::Profile, "profile", COL_PROFILE),
+            cell(SortKey::Host, "host", self.hits.cols.alias),
+            cell(SortKey::Target, "target", self.hits.cols.target),
+            cell(SortKey::Profile, "profile", self.hits.cols.profile),
             cell(SortKey::Source, "source", COL_SOURCE),
-            cell(SortKey::LastUsed, "last used", 12),
+            cell(SortKey::LastUsed, "last used", COL_USED),
         ])
     }
 }

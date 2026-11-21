@@ -1,4 +1,4 @@
-use super::hosts::{COL_ALIAS, COL_PROFILE, COL_SOURCE, COL_STAR, COL_TARGET, fuzzy, sort_key_at};
+use super::hosts::{COL_ALIAS, COL_PROFILE, COL_SOURCE, COL_STAR, COL_TARGET, Cols, fuzzy, sort_key_at};
 use super::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -205,6 +205,41 @@ fn the_cursor_follows_a_host_that_moves_after_a_connection() {
     assert_eq!(a.visible().first().map(|&i| a.hosts[i].alias.as_str()), Some("gamma"), "gamma should be on top");
     assert_eq!(alias(&a).as_deref(), Some("gamma"));
     assert_eq!(a.host_state.selected(), Some(0));
+}
+
+#[test]
+fn columns_grow_with_long_names_when_the_terminal_is_wide() {
+    let long = "a-very-long-host-name-for-a-production-database-server";
+    let (_t, mut a) = app_with(vec![host(long, "10.0.0.1"), host("beta", "10.0.0.2")]);
+    let mut term = Terminal::new(TestBackend::new(200, 30)).unwrap();
+    term.draw(|f| a.draw(f)).unwrap();
+    let buf = term.backend().buffer().clone();
+    let screen: String = (0..buf.area.height)
+        .map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(screen.contains(long), "wide terminal should show the whole name\n{screen}");
+    assert!(a.hits.cols.alias > COL_ALIAS && a.hits.cols.alias >= long.len() as u16);
+    // At 110 columns only the spare room is shared, so the name is cut but the host column still grows.
+    let (_t2, mut b) = app_with(vec![host(long, "10.0.0.1")]);
+    render(&mut b);
+    assert!(b.hits.cols.alias > COL_ALIAS && b.hits.cols.alias < long.len() as u16);
+    // Nothing is taken from the narrow terminal: it keeps the smallest widths.
+    assert_eq!(Cols::fit(60, [60, 60, 60]), Cols::default());
+}
+
+#[test]
+fn spare_width_is_shared_in_proportion_to_what_each_column_lacks() {
+    let min = Cols::default();
+    // Room for 15 more characters only: the host column lacks 20, the target 10, the profile nothing.
+    let width = COL_STAR + COL_SOURCE + 12 + min.alias + min.target + min.profile + 15;
+    let c = Cols::fit(width, [min.alias + 20, min.target + 10, 0]);
+    assert!(c.alias > min.alias && c.target > min.target && c.profile == min.profile, "{c:?}");
+    assert!(c.alias + c.target + c.profile <= min.alias + min.target + min.profile + 15);
+    assert!(c.alias - min.alias > c.target - min.target);
+    // Plenty of room: every column fits its longest entry, and no more.
+    let c = Cols::fit(300, [min.alias + 20, min.target + 10, 0]);
+    assert_eq!((c.alias, c.target, c.profile), (min.alias + 20, min.target + 10, min.profile));
 }
 
 #[test]
@@ -1081,12 +1116,17 @@ fn header_click_does_not_connect_or_select() {
 
 #[test]
 fn sort_key_columns_map_correctly() {
-    assert_eq!(sort_key_at(0), SortKey::Smart);
-    assert_eq!(sort_key_at(COL_STAR), SortKey::Host);
-    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS), SortKey::Target);
-    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET), SortKey::Profile);
-    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE), SortKey::Source);
-    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_SOURCE), SortKey::LastUsed);
+    let c = Cols::default();
+    assert_eq!(sort_key_at(0, c), SortKey::Smart);
+    assert_eq!(sort_key_at(COL_STAR, c), SortKey::Host);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS, c), SortKey::Target);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET, c), SortKey::Profile);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE, c), SortKey::Source);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_SOURCE, c), SortKey::LastUsed);
+    // A wider host column pushes the others right.
+    let wide = Cols { alias: 40, ..c };
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS, wide), SortKey::Host);
+    assert_eq!(sort_key_at(COL_STAR + 40, wide), SortKey::Target);
 }
 
 /// Dev aid: `cargo test dump_screens -- --ignored --nocapture` prints every tab.
