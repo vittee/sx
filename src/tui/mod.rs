@@ -106,6 +106,8 @@ struct Hits {
     form_fields: Rect,
     form_options: Vec<(Rect, Option<String>)>,
     form_keys: Vec<(Rect, KeyEvent)>,
+    /// The open list of private keys under the identity field: row, key path.
+    form_keylist: Vec<(Rect, String)>,
     /// The options picker: its frame and its rows.
     picker_area: Rect,
     picker_list: Rect,
@@ -148,6 +150,8 @@ pub struct App {
     /// How far the options popup or the picker was dragged from the centre, and where a drag last was.
     popup_offset: (i32, i32),
     popup_drag: Option<(u16, u16)>,
+    /// Where the private keys offered for the identity file are looked up (`~/.ssh`).
+    ssh_dir: Option<PathBuf>,
 }
 
 fn inside(r: Rect, x: u16, y: u16) -> bool {
@@ -197,6 +201,7 @@ impl App {
             pending_connect: None,
             popup_offset: (0, 0),
             popup_drag: None,
+            ssh_dir: config::home_dir().map(|h| h.join(".ssh")),
         };
         // Hosts used before but missing from ssh config/known_hosts still show up.
         let known: Vec<String> = app.hosts.iter().map(|h| h.alias.clone()).collect();

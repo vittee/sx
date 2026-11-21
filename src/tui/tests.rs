@@ -21,7 +21,8 @@ fn app() -> (tempfile::TempDir, App) {
 fn app_with(hosts: Vec<HostEntry>) -> (tempfile::TempDir, App) {
     let tmp = tempfile::tempdir().unwrap();
     let (cfg, _) = config::ensure_initialized(tmp.path()).unwrap();
-    let app = App::new(tmp.path().to_path_buf(), cfg, hosts);
+    let mut app = App::new(tmp.path().to_path_buf(), cfg, hosts);
+    app.ssh_dir = None;
     (tmp, app)
 }
 
@@ -80,6 +81,116 @@ fn key(app: &mut App, code: KeyCode) {
 /// The screen with every run of spaces made one, to compare text that is padded into columns.
 fn squash(screen: &str) -> String {
     screen.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// An app whose `~/.ssh` holds two private keys and some files that are not.
+fn app_with_keys() -> (tempfile::TempDir, tempfile::TempDir, App) {
+    let (t, mut a) = app();
+    let ssh = tempfile::tempdir().unwrap();
+    let w = |n: &str, c: &str| std::fs::write(ssh.path().join(n), c).unwrap();
+    w("id_ed25519", "-----BEGIN OPENSSH PRIVATE KEY-----
+");
+    w("id_ed25519.pub", "ssh-ed25519 AAAA");
+    w("work_key", "-----BEGIN RSA PRIVATE KEY-----
+");
+    w("legacy", "binary");
+    w("legacy.pub", "ssh-rsa AAAA");
+    w("config", "Host *");
+    w("known_hosts", "x");
+    a.ssh_dir = Some(ssh.path().to_path_buf());
+    (t, ssh, a)
+}
+
+#[test]
+fn ctrl_k_lists_the_private_keys_and_enter_takes_one() {
+    let (_t, _s, mut a) = app_with_keys();
+    ctrl(&mut a, 'o');
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down); // focus the identity field
+    ctrl(&mut a, 'k');
+    let screen = render(&mut a);
+    for k in ["~/.ssh/id_ed25519", "~/.ssh/legacy", "~/.ssh/work_key"] {
+        assert!(screen.contains(k), "missing {k}
+{screen}");
+    }
+    for k in ["known_hosts", ".pub
+", "~/.ssh/config"] {
+        assert!(!screen.contains(k), "unexpected {k}
+{screen}");
+    }
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Enter);
+    assert_eq!(a.identity_value().as_deref(), Some("~/.ssh/legacy"));
+    assert!(!render(&mut a).contains("work_key"), "list should be closed");
+}
+
+#[test]
+fn typing_narrows_the_key_list_and_esc_closes_only_the_list() {
+    let (_t, _s, mut a) = app_with_keys();
+    ctrl(&mut a, 'o');
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down); // focus the identity field
+    typed(&mut a, "wor");
+    ctrl(&mut a, 'k');
+    let screen = render(&mut a);
+    assert!(screen.contains("work_key") && !screen.contains("~/.ssh/legacy"), "{screen}");
+    key(&mut a, KeyCode::Esc);
+    assert!(matches!(a.mode, Mode::HostForm(_)), "Esc closed the whole form");
+    assert_eq!(a.identity_value().as_deref(), Some("wor"));
+    // With the list closed, Esc leaves the form as before.
+    key(&mut a, KeyCode::Esc);
+    key(&mut a, KeyCode::Char('y'));
+    assert!(matches!(a.mode, Mode::Normal));
+}
+
+#[test]
+fn clicking_a_key_in_the_list_takes_it() {
+    let (_t, _s, mut a) = app_with_keys();
+    ctrl(&mut a, 'o');
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down); // focus the identity field
+    ctrl(&mut a, 'k');
+    render(&mut a);
+    let (r, name) = a.hits.form_keylist[2].clone();
+    click(&mut a, r.x + 1, r.y);
+    assert_eq!(a.identity_value(), Some(name));
+}
+
+#[test]
+fn ctrl_k_without_keys_says_so() {
+    let (_t, mut a) = app();
+    ctrl(&mut a, 'o');
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down); // focus the identity field
+    ctrl(&mut a, 'k');
+    assert!(matches!(&a.status, Some((m, true)) if m.contains("no private keys")), "{:?}", a.status);
+}
+
+#[test]
+fn the_key_list_belongs_to_the_identity_field() {
+    let (_t, _s, mut a) = app_with_keys();
+    ctrl(&mut a, 'o');
+    assert!(!render(&mut a).contains("^K"), "hint shown on the user field");
+    ctrl(&mut a, 'k');
+    assert!(a.hits.form_keylist.is_empty() && !render(&mut a).contains("work_key"), "^K worked on the user field");
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down);
+    assert!(squash(&render(&mut a)).contains("^K pick key file"));
+    key(&mut a, KeyCode::Down); // on to the jump host: the hint goes away again
+    assert!(!render(&mut a).contains("^K"));
+}
+
+#[test]
+fn the_hints_do_not_move_when_the_key_hint_appears() {
+    let (_t, _s, mut a) = app_with_keys();
+    ctrl(&mut a, 'o');
+    let col = |screen: &str| screen.lines().find(|l| l.contains("delete")).and_then(|l| l.find("^D"));
+    let before = col(&render(&mut a));
+    key(&mut a, KeyCode::Down);
+    key(&mut a, KeyCode::Down);
+    let on_identity = render(&mut a);
+    assert!(on_identity.contains("^K"));
+    assert!(before.is_some() && col(&on_identity) == before, "^D moved: {before:?} -> {:?}", col(&on_identity));
 }
 
 #[test]

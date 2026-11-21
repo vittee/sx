@@ -10,6 +10,12 @@ use std::collections::BTreeMap;
 const LABELS: [&str; 5] = ["User", "Port", "Identity file", "Jump host", "Extra ssh args"];
 const EXAMPLES: [&str; 5] = ["", "", "~/.ssh/id_ed25519", "bastion.example.com", ""];
 const PORT: usize = 1;
+const IDENTITY: usize = 2;
+/// Rows of the key list shown at once.
+const KEY_ROWS: usize = 5;
+/// The third hint row. Its last hint shows only on the identity field, but the columns are sized
+/// for all of it, so the hints of the rows above do not move.
+const THIRD_ROW: [(&str, &str); 3] = [("^S", "save all"), ("^U", "clear field"), ("^K", "pick key file")];
 const LABEL_W: usize = 16;
 const DEFAULT: &str = "default";
 /// The colour of the options form, its picker, and the target of a host that has options.
@@ -36,6 +42,33 @@ pub(super) struct HostForm {
     confirming: bool,
     /// The name being typed is a new name for the current options, not for new options.
     renaming: bool,
+    /// The private keys found in `~/.ssh`, as `~/.ssh/name`.
+    keys: Vec<String>,
+    /// The row chosen in the open key list (Ctrl-K), counted in `key_matches`.
+    key_pick: Option<usize>,
+}
+
+/// The private keys in `dir`: files that start with a PEM/OpenSSH header or have a `.pub` beside them.
+fn scan_keys(dir: &std::path::Path) -> Vec<String> {
+    use std::io::Read;
+    const SKIP: [&str; 5] = ["known_hosts", "known_hosts.old", "authorized_keys", "config", "environment"];
+    let mut keys: Vec<String> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let meta = e.metadata().ok()?;
+            if !meta.is_file() || meta.len() > 16 * 1024 || name.ends_with(".pub") || SKIP.contains(&name.as_str()) {
+                return None;
+            }
+            let mut head = [0u8; 10];
+            let pem = std::fs::File::open(e.path()).and_then(|mut f| f.read_exact(&mut head)).is_ok() && head == *b"-----BEGIN";
+            (pem || dir.join(format!("{name}.pub")).is_file()).then(|| format!("~/.ssh/{name}"))
+        })
+        .collect();
+    keys.sort();
+    keys
 }
 
 fn to_values(o: &ConnOptions) -> [String; 5] {
@@ -48,7 +81,19 @@ fn from_values(v: &[String; 5]) -> ConnOptions {
 }
 
 impl HostForm {
-    fn new(host: &str, prefs: Option<&config::HostPrefs>, entry: &HostEntry) -> HostForm {
+    /// The keys that fit what is typed in the identity field.
+    fn key_matches(&self) -> Vec<&String> {
+        let typed = self.values[IDENTITY].trim().to_lowercase();
+        self.keys.iter().filter(|k| k.to_lowercase().contains(&typed)).collect()
+    }
+
+    /// Puts the chosen key into the identity field and closes the list.
+    fn take_key(&mut self, key: &str) {
+        self.values[IDENTITY] = key.to_string();
+        self.key_pick = None;
+    }
+
+    fn new(host: &str, prefs: Option<&config::HostPrefs>, entry: &HostEntry, keys: Vec<String>) -> HostForm {
         let p = prefs.cloned().unwrap_or_default();
         let mut hints: [String; 5] = EXAMPLES.map(|e| e.to_string());
         hints[0] = entry.user.clone().unwrap_or_default();
@@ -66,6 +111,8 @@ impl HostForm {
             saved: (p.default_options(), p.options.clone()),
             confirming: false,
             renaming: false,
+            keys,
+            key_pick: None,
         }
     }
 
@@ -206,7 +253,8 @@ impl App {
     pub(super) fn open_host_options(&mut self) {
         if let Some(i) = self.selected_host() {
             let entry = &self.hosts[i];
-            let form = HostForm::new(&entry.alias, self.cfg.hosts.get(&entry.alias), entry);
+            let keys = self.ssh_dir.as_deref().map(scan_keys).unwrap_or_default();
+            let form = HostForm::new(&entry.alias, self.cfg.hosts.get(&entry.alias), entry, keys);
             self.popup_offset = (0, 0);
             self.mode = Mode::HostForm(Box::new(form));
         }
@@ -302,6 +350,24 @@ impl App {
             self.mode = Mode::HostForm(Box::new(form));
             return;
         }
+        // The open key list takes the arrows, Enter and Esc. Other keys act as usual and close it.
+        let was_open = form.key_pick.is_some();
+        if let Some(sel) = form.key_pick {
+            let matches: Vec<String> = form.key_matches().into_iter().cloned().collect();
+            let m = matches.len();
+            match k.code {
+                KeyCode::Esc => form.key_pick = None,
+                KeyCode::Up if m > 0 => form.key_pick = Some((sel + m - 1) % m),
+                KeyCode::Down if m > 0 => form.key_pick = Some((sel + 1) % m),
+                KeyCode::Enter if m > 0 => form.take_key(&matches[sel.min(m - 1)]),
+                _ => {}
+            }
+            if matches!(k.code, KeyCode::Esc | KeyCode::Up | KeyCode::Down | KeyCode::Enter) {
+                self.mode = Mode::HostForm(Box::new(form));
+                return;
+            }
+        }
+        let before = form.values[IDENTITY].clone();
         let n = LABELS.len();
         match k.code {
             KeyCode::Esc if form.want_close() => return,
@@ -329,6 +395,15 @@ impl App {
             },
             KeyCode::Char('n') if ctrl => form.naming = Some(String::new()),
             KeyCode::Char('d') if ctrl => form.delete_options(),
+            KeyCode::Char('k') if ctrl && form.focus == IDENTITY => {
+                if form.keys.is_empty() {
+                    self.fail("no private keys found in ~/.ssh".to_string());
+                } else if form.key_matches().is_empty() {
+                    self.fail("no key in ~/.ssh matches what is typed".to_string());
+                } else {
+                    form.key_pick = Some(0);
+                }
+            }
             KeyCode::Char('r') if ctrl => match form.current.clone() {
                 Some(name) => {
                     form.naming = Some(name);
@@ -348,6 +423,11 @@ impl App {
                 form.values[form.focus].push(c);
             }
             _ => {}
+        }
+        if was_open {
+            // Typing narrows the list and goes back to its first row. Any other key closes it.
+            let typed = matches!(k.code, KeyCode::Backspace | KeyCode::Char(_)) && form.values[IDENTITY] != before;
+            form.key_pick = (typed && form.focus == IDENTITY && !form.key_matches().is_empty()).then_some(0);
         }
         self.mode = Mode::HostForm(Box::new(form));
     }
@@ -460,20 +540,26 @@ impl App {
         } else if form.naming.is_some() {
             [&[("Enter", if form.renaming { "rename" } else { "add" }), ("Esc", "cancel")], &[], &[]]
         } else {
+            // The key list belongs to the identity field, so its hint shows only there.
+            let third: &[(&str, &str)] = if form.focus == IDENTITY { &THIRD_ROW } else { &THIRD_ROW[..2] };
             [
                 &[("Enter", "connect once"), ("Esc", "cancel"), ("Tab", "next field")],
                 &[("←/→", "switch"), ("^N", "new"), ("^R", "rename"), ("^D", "delete")],
-                &[("^S", "save all"), ("^U", "clear field")],
+                third,
             ]
         };
         // The hints sit in columns: the keys of a column are padded to one width, so the
         // descriptions line up, and every column starts after the widest cell of the one before.
-        let columns = keys.iter().map(|r| r.len()).max().unwrap_or(0);
+        let mut sized: Vec<&[(&str, &str)]> = keys.to_vec();
+        if !form.confirming && form.naming.is_none() {
+            sized[2] = &THIRD_ROW;
+        }
+        let columns = sized.iter().map(|r| r.len()).max().unwrap_or(0);
         let key_w: Vec<usize> = (0..columns)
-            .map(|c| keys.iter().filter_map(|r| r.get(c)).map(|(k, _)| k.chars().count()).max().unwrap_or(0))
+            .map(|c| sized.iter().filter_map(|r| r.get(c)).map(|(k, _)| k.chars().count()).max().unwrap_or(0))
             .collect();
         let cell_w: Vec<usize> = (0..columns)
-            .map(|c| keys.iter().filter_map(|r| r.get(c)).map(|(_, w)| w.chars().count()).max().unwrap_or(0) + key_w[c] + 1)
+            .map(|c| sized.iter().filter_map(|r| r.get(c)).map(|(_, w)| w.chars().count()).max().unwrap_or(0) + key_w[c] + 1)
             .collect();
         let mut key_hits = Vec::new();
         for row in keys {
@@ -495,6 +581,29 @@ impl App {
         key_hits.extend(arrows);
         self.hits.form_keys = key_hits;
         f.render_widget(Paragraph::new(lines), inner);
+
+        // The key list drops down under the identity field, over the rows below it.
+        self.hits.form_keylist.clear();
+        if let Some(sel) = form.key_pick {
+            let matches = form.key_matches();
+            let x = inner.x + 1 + LABEL_W as u16;
+            let list = Rect::new(x, inner.y + 2 + IDENTITY as u16, inner.width.saturating_sub(x - inner.x + 1), matches.len().min(KEY_ROWS) as u16);
+            if !matches.is_empty() && list.width > 0 {
+                let sel = sel.min(matches.len() - 1);
+                let first = (sel + 1).saturating_sub(KEY_ROWS);
+                f.render_widget(ratatui::widgets::Clear, list);
+                let rows: Vec<Line> = (first..matches.len().min(first + KEY_ROWS))
+                    .map(|i| {
+                        let style = if i == sel { accent.add_modifier(Modifier::BOLD | Modifier::REVERSED) } else { Style::new() };
+                        Line::styled(truncate(&format!(" {}", matches[i]), list.width), style)
+                    })
+                    .collect();
+                for (r, i) in (first..matches.len().min(first + KEY_ROWS)).enumerate() {
+                    self.hits.form_keylist.push((Rect::new(list.x, list.y + r as u16, list.width, 1), matches[i].clone()));
+                }
+                f.render_widget(Paragraph::new(rows), list);
+            }
+        }
     }
 
     pub(super) fn draw_set_picker(&mut self, f: &mut Frame, body: Rect, pick: &OptionsPicker) {
@@ -571,6 +680,22 @@ impl App {
     /// A click or the wheel on the connection options form. A click outside closes it.
     pub(super) fn on_mouse_host_form(&mut self, mut form: HostForm, (x, y): (u16, u16), wheel: Option<isize>, click: bool) {
         let n = LABELS.len() as isize;
+        if let Some(sel) = form.key_pick {
+            // The open key list: a click on a row takes it, the wheel moves along it.
+            if click && let Some((_, key)) = self.hits.form_keylist.iter().find(|(r, _)| inside(*r, x, y)) {
+                form.take_key(&key.clone());
+                self.mode = Mode::HostForm(Box::new(form));
+                return;
+            }
+            if let Some(d) = wheel {
+                let m = form.key_matches().len() as isize;
+                if m > 0 {
+                    form.key_pick = Some((sel as isize + d).rem_euclid(m) as usize);
+                }
+                self.mode = Mode::HostForm(Box::new(form));
+                return;
+            }
+        }
         if let Some(d) = wheel {
             if form.naming.is_none() {
                 form.focus = (form.focus as isize + d).rem_euclid(n) as usize;
@@ -584,6 +709,7 @@ impl App {
                 return; // a click outside closes the form
             }
         } else if click && form.naming.is_none() {
+            form.key_pick = None;
             if let Some((_, name)) = self.hits.form_options.iter().find(|(r, _)| inside(*r, x, y)) {
                 form.switch_to(name.clone());
             } else if inside(self.hits.form_fields, x, y) {
@@ -644,6 +770,13 @@ impl App {
 
 #[cfg(test)]
 impl App {
+    pub(super) fn identity_value(&self) -> Option<String> {
+        match &self.mode {
+            Mode::HostForm(form) => Some(form.values[IDENTITY].clone()),
+            _ => None,
+        }
+    }
+
     pub(super) fn current_options_name(&self) -> Option<String> {
         match &self.mode {
             Mode::HostForm(form) => form.current().map(String::from),
