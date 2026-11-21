@@ -1,0 +1,446 @@
+//! Hosts tab: the host list with sorting, favorites, per-host snippets and the history pane.
+
+use super::*;
+
+// Column widths in the hosts list.
+pub(super) const COL_STAR: u16 = 2;
+
+pub(super) const COL_ALIAS: u16 = 22;
+
+pub(super) const COL_TARGET: u16 = 30;
+
+pub(super) const COL_PROFILE: u16 = 12;
+
+/// Wide enough for `known_hosts`.
+pub(super) const COL_SOURCE: u16 = 12;
+
+/// Which sort a click at `col` (relative to the header's left edge) selects.
+pub(super) fn sort_key_at(col: u16) -> SortKey {
+    if col < COL_STAR {
+        SortKey::Smart
+    } else if col < COL_STAR + COL_ALIAS {
+        SortKey::Host
+    } else if col < COL_STAR + COL_ALIAS + COL_TARGET {
+        SortKey::Target
+    } else if col < COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE {
+        SortKey::Profile
+    } else if col < COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_SOURCE {
+        SortKey::Source
+    } else {
+        SortKey::LastUsed
+    }
+}
+
+/// Sessions shown in the history pane.
+pub(super) const HISTORY_ROWS: usize = 5;
+
+/// `2h ago    3m 12s   ok`, with the outcome colored.
+pub(super) fn history_line(e: &history::Entry) -> Line<'static> {
+    let color = match e.outcome.as_str() {
+        "ok" => Color::Green,
+        "failed" => Color::Red,
+        _ => Color::Yellow,
+    };
+    Line::from(vec![
+        Span::raw(format!(" {:<10}", ago(e.when))),
+        Span::styled(format!("{:<9}", history::format_secs(e.secs)), Style::new().add_modifier(Modifier::DIM)),
+        Span::styled(e.outcome.clone(), Style::new().fg(color)),
+    ])
+}
+
+pub(super) fn ago(secs: u64) -> String {
+    let d = config::now_secs().saturating_sub(secs);
+    match d {
+        0..=59 => "just now".into(),
+        60..=3599 => format!("{}m ago", d / 60),
+        3600..=86399 => format!("{}h ago", d / 3600),
+        _ => format!("{}d ago", d / 86400),
+    }
+}
+
+/// Subsequence match: every char of `needle` appears in `hay` in order (case-insensitive).
+pub(super) fn fuzzy(needle: &str, hay: &str) -> bool {
+    let mut hay = hay.chars().flat_map(char::to_lowercase);
+    needle.chars().flat_map(char::to_lowercase).all(|n| hay.any(|h| h == n))
+}
+
+impl App {
+    /// Indices into `self.hosts` that match the filter, in the configured sort order.
+    pub(super) fn visible(&self) -> Vec<usize> {
+        let mut idx: Vec<usize> = (0..self.hosts.len())
+            .filter(|&i| {
+                let h = &self.hosts[i];
+                fuzzy(&self.filter, &format!("{} {}", h.alias, h.target()))
+            })
+            .collect();
+        idx.sort_by(|&a, &b| self.compare(a, b));
+        idx
+    }
+
+    /// Orders two hosts by the configured key. Hosts never used always sort last under "last used".
+    pub(super) fn compare(&self, a: usize, b: usize) -> Ordering {
+        let (ha, hb) = (&self.hosts[a], &self.hosts[b]);
+        let (pa, pb) = (self.cfg.hosts.get(&ha.alias), self.cfg.hosts.get(&hb.alias));
+        let by_name = || ha.alias.to_lowercase().cmp(&hb.alias.to_lowercase());
+        let used = |p: Option<&config::HostPrefs>| p.and_then(|p| p.last_used);
+        let profile = |h: &HostEntry| self.cfg.profile_for(&h.alias).unwrap_or("off").to_string();
+        let reverse = self.cfg.sort_reverse;
+        let directed = |o: Ordering| if reverse { o.reverse() } else { o };
+
+        match self.cfg.sort {
+            SortKey::Smart => {
+                let fav = |p: Option<&config::HostPrefs>| p.is_some_and(|p| p.favorite);
+                fav(pb)
+                    .cmp(&fav(pa))
+                    .then(used(pb).cmp(&used(pa)))
+                    .then_with(by_name)
+            }
+            SortKey::Host => directed(by_name()),
+            SortKey::Target => directed(
+                ha.target().to_lowercase().cmp(&hb.target().to_lowercase()).then_with(by_name),
+            ),
+            SortKey::Profile => directed(profile(ha).cmp(&profile(hb)).then_with(by_name)),
+            SortKey::Source => directed(ha.source.label().cmp(hb.source.label()).then_with(by_name)),
+            SortKey::LastUsed => match (used(pa), used(pb)) {
+                (Some(x), Some(y)) => directed(y.cmp(&x)).then_with(by_name), // newest first
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => by_name(),
+            },
+        }
+    }
+
+    /// True when the list currently runs from high to low (newest first, or reversed).
+    pub(super) fn sort_descending(&self) -> bool {
+        (self.cfg.sort == SortKey::LastUsed) != self.cfg.sort_reverse
+    }
+
+    /// Applies a sort change, saves it, and keeps the same host selected.
+    pub(super) fn change_sort(&mut self, f: impl FnOnce(&mut Config)) {
+        let keep = self.selected_host().map(|i| self.hosts[i].alias.clone());
+        f(&mut self.cfg);
+        self.save_cfg();
+        let vis = self.visible();
+        let pos = keep
+            .and_then(|alias| vis.iter().position(|&i| self.hosts[i].alias == alias))
+            .unwrap_or(0);
+        self.host_state.select(Some(pos));
+    }
+
+    /// Header click: pick a column, or reverse it when it is already the sort column.
+    pub(super) fn click_sort(&mut self, key: SortKey) {
+        self.change_sort(|cfg| {
+            if cfg.sort == key && key != SortKey::Smart {
+                cfg.sort_reverse = !cfg.sort_reverse;
+            } else {
+                cfg.sort = key;
+                cfg.sort_reverse = false;
+            }
+        });
+    }
+
+    pub(super) fn cycle_sort(&mut self) {
+        self.change_sort(|cfg| {
+            cfg.sort = cfg.sort.next();
+            cfg.sort_reverse = false;
+        });
+    }
+
+    pub(super) fn reverse_sort(&mut self) {
+        self.change_sort(|cfg| cfg.sort_reverse = !cfg.sort_reverse);
+    }
+
+    pub(super) fn selected_host(&self) -> Option<usize> {
+        let vis = self.visible();
+        self.host_state.selected().and_then(|s| vis.get(s).copied())
+    }
+
+    pub(super) fn connect_selected(&mut self) {
+        let args = if let Some(i) = self.selected_host() {
+            let h = &self.hosts[i];
+            match (&h.port, h.source == Source::KnownHosts) {
+                (Some(p), true) => vec!["-p".to_string(), p.clone(), h.alias.clone()],
+                _ => vec![h.alias.clone()],
+            }
+        } else if !self.filter.trim().is_empty() {
+            self.filter.split_whitespace().map(String::from).collect() // typed ssh arguments
+        } else {
+            return;
+        };
+        self.pending_connect = Some(args);
+    }
+
+    pub(super) fn cycle_profile_of_selected(&mut self, forward: bool) {
+        if let Some(i) = self.selected_host() {
+            let alias = self.hosts[i].alias.clone();
+            self.cfg.cycle_profile(&alias, forward);
+            self.save_cfg();
+        }
+    }
+
+    /// Opens the popup for choosing the extra snippets of the selected host.
+    pub(super) fn open_host_snippets(&mut self) {
+        if let Some(i) = self.selected_host() {
+            self.host_chk.select(Some(0));
+            self.mode = Mode::HostSnippets(self.hosts[i].alias.clone());
+        }
+    }
+
+    pub(super) fn on_key_host_snippets(&mut self, k: KeyEvent, host: String) {
+        let items = self.grid_items();
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('q') => return,
+            KeyCode::Up => Self::move_sel(&mut self.host_chk, items.len(), -1),
+            KeyCode::Down => Self::move_sel(&mut self.host_chk, items.len(), 1),
+            KeyCode::Char(' ') | KeyCode::Enter => self.toggle_host_extra(&host),
+            _ => {}
+        }
+        self.mode = Mode::HostSnippets(host);
+    }
+
+    pub(super) fn toggle_host_extra(&mut self, host: &str) {
+        let items = self.grid_items();
+        if let Some(name) = self.host_chk.selected().and_then(|i| items.get(i)) {
+            self.cfg.toggle_host_snippet(host, name);
+            self.save_cfg();
+        }
+    }
+
+    pub(super) fn toggle_favorite_of_selected(&mut self) {
+        if let Some(i) = self.selected_host() {
+            let alias = self.hosts[i].alias.clone();
+            self.cfg.toggle_favorite(&alias);
+            self.save_cfg();
+        }
+    }
+
+    pub(super) fn on_key_hosts(&mut self, k: KeyEvent, ctrl: bool) {
+        if self.global_nav(k) {
+            return;
+        }
+        let len = self.visible().len();
+        match k.code {
+            KeyCode::Up => Self::move_sel(&mut self.host_state, len, -1),
+            KeyCode::Down => Self::move_sel(&mut self.host_state, len, 1),
+            KeyCode::PageUp => Self::move_sel(&mut self.host_state, len, -10),
+            KeyCode::PageDown => Self::move_sel(&mut self.host_state, len, 10),
+            KeyCode::Home => self.host_state.select(Some(0)),
+            KeyCode::End => Self::move_sel(&mut self.host_state, len, len as isize),
+            KeyCode::Left => self.cycle_profile_of_selected(false),
+            KeyCode::Right => self.cycle_profile_of_selected(true),
+            KeyCode::Enter => self.connect_selected(),
+            KeyCode::Char('f') if ctrl => self.toggle_favorite_of_selected(),
+            KeyCode::Char('e') if ctrl => self.open_host_snippets(),
+            KeyCode::Char('s') if ctrl => self.cycle_sort(),
+            KeyCode::Char('r') if ctrl => self.reverse_sort(),
+            KeyCode::Char(c) if !ctrl => {
+                self.filter.push(c);
+                self.host_state.select(Some(0));
+            }
+            KeyCode::Backspace => {
+                self.filter.pop();
+                self.host_state.select(Some(0));
+            }
+            KeyCode::Esc => {
+                if self.filter.is_empty() {
+                    self.quit = true;
+                } else {
+                    self.filter.clear();
+                    self.host_state.select(Some(0));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn mouse_hosts(&mut self, x: u16, y: u16, wheel: Option<isize>, click: bool) {
+        let len = self.visible().len();
+        if let Some(d) = wheel {
+            return Self::move_sel(&mut self.host_state, len, d);
+        }
+        let (head, list) = (self.hits.hosts_head, self.hits.hosts_list);
+        if click && inside(head, x, y) {
+            return self.click_sort(sort_key_at(x - head.x));
+        }
+        if !click || !inside(list, x, y) {
+            return;
+        }
+        let i = self.host_state.offset() + (y - list.y) as usize;
+        if i >= len {
+            return;
+        }
+        self.host_state.select(Some(i));
+        let col = x - list.x;
+        if col < COL_STAR {
+            self.toggle_favorite_of_selected();
+        } else if (COL_STAR + COL_ALIAS + COL_TARGET..COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE).contains(&col) {
+            self.cycle_profile_of_selected(true);
+        } else if self.is_double_click(Tab::Hosts, i) {
+            self.connect_selected();
+        }
+    }
+
+    /// Popup over the host list: the snippets this host gets in addition to its profile's.
+    pub(super) fn draw_host_snippets(&mut self, f: &mut Frame, body: Rect, host: &str) {
+        let items = self.grid_items();
+        let profile = self.cfg.profile_for(host).map(String::from);
+        let from_profile: Vec<String> =
+            profile.as_ref().and_then(|p| self.cfg.profiles.get(p)).map(|p| p.snippets.clone()).unwrap_or_default();
+        let w = body.width.min(56);
+        let h = (items.len() as u16 + 2).clamp(5, body.height.max(5)).min(body.height);
+        let area = Rect::new(body.x + (body.width - w) / 2, body.y + (body.height - h) / 2, w, h);
+        f.render_widget(ratatui::widgets::Clear, area);
+        let block = Block::bordered()
+            .title(format!(" {host} + profile {} ", profile.as_deref().unwrap_or("off")))
+            .border_style(Style::new().fg(Color::Cyan));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        self.hits.popup_list = inner;
+        if items.is_empty() {
+            f.render_widget(Paragraph::new("no snippets yet: create one in the Snippets tab"), inner);
+            return;
+        }
+        let extras = self.cfg.host_snippets(host).to_vec();
+        let rows: Vec<ListItem> = items
+            .iter()
+            .map(|name| {
+                let on = extras.contains(name);
+                let via_profile = from_profile.contains(name);
+                let mut spans = vec![
+                    Span::styled(if on { "[x] " } else { "[ ] " }, Style::new().fg(if on { Color::Green } else { Color::DarkGray })),
+                    Span::styled(name.clone(), Style::new().fg(kind_color(name))),
+                ];
+                if via_profile {
+                    spans.push(Span::styled("  (in profile)", Style::new().add_modifier(Modifier::DIM)));
+                }
+                ListItem::new(Line::from(spans))
+            })
+            .collect();
+        if self.host_chk.selected().is_none_or(|s| s >= items.len()) {
+            self.host_chk.select(Some(0));
+        }
+        let rows_a = if items.len() > inner.height as usize { Rect { width: inner.width.saturating_sub(1), ..inner } } else { inner };
+        f.render_stateful_widget(
+            List::new(rows).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+            rows_a,
+            &mut self.host_chk,
+        );
+        Self::scrollbar(f, inner, items.len(), self.host_chk.offset());
+    }
+
+    pub(super) fn draw_hosts(&mut self, f: &mut Frame, area: Rect) {
+        let [search_a, rest] = Layout::vertical([Constraint::Length(3), Constraint::Min(2)]).areas(area);
+        // The history pane needs room: header + 5 sessions + borders, and still a usable list.
+        let hist_h = if rest.height >= 16 { HISTORY_ROWS as u16 + 2 } else { 0 };
+        let [list_a, hist_a] = Layout::vertical([Constraint::Min(2), Constraint::Length(hist_h)]).areas(rest);
+        let vis = self.visible();
+        if hist_h > 0 {
+            self.draw_history(f, hist_a);
+        }
+        let search = Paragraph::new(Line::from(vec![
+            Span::styled(" > ", Style::new().fg(Color::Cyan)),
+            Span::raw(self.filter.clone()),
+            Span::styled("▏", Style::new().fg(Color::Cyan)),
+        ]))
+        .block(Block::bordered().title(format!(" Search ({} hosts) ", vis.len())));
+        f.render_widget(search, search_a);
+
+        let block = Block::bordered();
+        let inner = block.inner(list_a);
+        f.render_widget(block, list_a);
+        let [head_a, rows_a] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+        self.hits.hosts_list = rows_a;
+        self.hits.hosts_head = head_a;
+        f.render_widget(Paragraph::new(self.header_line()), head_a);
+
+        if vis.is_empty() {
+            let msg = if self.filter.trim().is_empty() {
+                "No hosts found in ~/.ssh/config or known_hosts. Type a host and press Enter.".to_string()
+            } else {
+                format!("No match. Press Enter to run: ssh {}", self.filter.trim())
+            };
+            f.render_widget(Paragraph::new(msg).style(Style::new().fg(Color::Yellow)), rows_a);
+            return;
+        }
+
+        let items: Vec<ListItem> = vis
+            .iter()
+            .map(|&i| {
+                let h = &self.hosts[i];
+                let prefs = self.cfg.hosts.get(&h.alias);
+                let fav = prefs.is_some_and(|p| p.favorite);
+                let base = self.cfg.profile_for(&h.alias).unwrap_or("off");
+                let off = base == "off";
+                let extras = self.cfg.host_snippets(&h.alias).len();
+                let profile = &if extras > 0 && !off { format!("{base}+{extras}") } else { base.to_string() };
+                let used = prefs.and_then(|p| p.last_used).map(ago).unwrap_or_default();
+                ListItem::new(Line::from(vec![
+                    Span::styled(truncate(if fav { "★" } else { "" }, COL_STAR), Style::new().fg(Color::Yellow)),
+                    Span::raw(truncate(&h.alias, COL_ALIAS)),
+                    Span::styled(truncate(&h.target(), COL_TARGET), Style::new().add_modifier(Modifier::DIM)),
+                    Span::styled(
+                        truncate(profile, COL_PROFILE),
+                        Style::new().fg(if off { Color::DarkGray } else { Color::Green }),
+                    ),
+                    Span::styled(truncate(h.source.label(), COL_SOURCE), Style::new().add_modifier(Modifier::DIM)),
+                    Span::styled(used, Style::new().add_modifier(Modifier::DIM)),
+                ]))
+            })
+            .collect();
+        let list = List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+        if self.host_state.selected().is_none_or(|s| s >= vis.len()) {
+            self.host_state.select(Some(0));
+        }
+        f.render_stateful_widget(list, rows_a, &mut self.host_state);
+        // Draw over the right border, skipping the header row.
+        let bar_a = Rect { x: list_a.x, width: list_a.width, ..rows_a };
+        Self::scrollbar(f, bar_a, vis.len(), self.host_state.offset());
+    }
+
+    /// Recent sessions of the selected host, newest first.
+    pub(super) fn draw_history(&mut self, f: &mut Frame, area: Rect) {
+        let alias = self.selected_host().map(|i| self.hosts[i].alias.clone());
+        if let Some(a) = &alias
+            && self.history_cache.as_ref().is_none_or(|(h, _, _)| h != a)
+        {
+            let rows = history::for_host(&self.dir, a, HISTORY_ROWS);
+            self.history_cache = Some((a.clone(), rows, history::count_for_host(&self.dir, a)));
+        }
+        let (title, lines): (String, Vec<Line>) = match (&alias, &self.history_cache) {
+            (Some(a), Some((h, rows, total))) if h == a => {
+                let title = format!(" History: {a} ({total} session{}) ", if *total == 1 { "" } else { "s" });
+                let lines = if rows.is_empty() {
+                    vec![Line::styled("no sessions yet", Style::new().add_modifier(Modifier::DIM))]
+                } else {
+                    rows.iter().map(history_line).collect()
+                };
+                (title, lines)
+            }
+            _ => (" History ".to_string(), vec![Line::styled("select a host", Style::new().add_modifier(Modifier::DIM))]),
+        };
+        f.render_widget(Paragraph::new(lines).block(Block::bordered().title(title)), area);
+    }
+
+    /// Column headers; the active sort column is highlighted and carries an arrow.
+    pub(super) fn header_line(&self) -> Line<'static> {
+        let arrow = if self.sort_descending() { " ▼" } else { " ▲" };
+        let cell = |key: SortKey, label: &str, width: u16| {
+            let active = self.cfg.sort == key;
+            let text = if active && key != SortKey::Smart { format!("{label}{arrow}") } else { label.to_string() };
+            let style = if active {
+                Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::new().add_modifier(Modifier::DIM)
+            };
+            Span::styled(truncate(&text, width), style)
+        };
+        Line::from(vec![
+            cell(SortKey::Smart, "★", COL_STAR),
+            cell(SortKey::Host, "host", COL_ALIAS),
+            cell(SortKey::Target, "target", COL_TARGET),
+            cell(SortKey::Profile, "profile", COL_PROFILE),
+            cell(SortKey::Source, "source", COL_SOURCE),
+            cell(SortKey::LastUsed, "last used", 12),
+        ])
+    }
+}

@@ -12,6 +12,7 @@ Details are under [How it works](#how-it-works).
 ## What you get:
 
 - Your prompt and aliases on every server, from small snippet files you keep locally.
+- A terminal UI to browse hosts, edit snippets and see recent sessions for each host.
 - Preset prompt themes. You can edit them or write your own.
 - Profiles that group snippets and a prompt, assigned per host.
 - The same arguments as `ssh`.
@@ -23,6 +24,7 @@ Quick start:
 cargo build --release   # binary: target/release/sx
 sx init                 # create sample snippets and the default profile
 sx user@host            # log in with your rc
+sx                      # or open the TUI
 ```
 
 Requires bash on the server, see [Limits](#limits).
@@ -30,11 +32,66 @@ Requires bash on the server, see [Limits](#limits).
 ## Usage
 
 ```sh
+sx                      # open the TUI
 sx user@host            # same arguments as ssh, with your rc injected
 sx -p 2222 -i key host
 sx --dry-run host       # print the ssh command, do not run it
 sx init                 # create sample snippets and the default profile
+sx init --presets       # add vim presets that are missing, switched off
 ```
+
+## TUI
+
+Keyboard and mouse both work (click, double-click, wheel).<br>
+While the mouse is captured, the terminal cannot select text.<br>
+`F2` hands the mouse back to the terminal and takes it over again on the next press.<br>
+Most terminals also let you select while holding `Shift`.
+
+### Hosts page
+
+The list comes from `~/.ssh/config` (with `Include`) and `~/.ssh/known_hosts`.<br>
+The `source` column shows which one a host came from: `config` or `known_hosts`.<br>
+Or simply connect to the typed text in the search box.
+
+#### Keys
+- `Left`/`Right`, or a click on the profile column,
+  changes the host's profile (`-` means off, plain ssh).
+- `Ctrl-F`, or a click on the star, marks a favorite.
+- `Ctrl-E` picks extra snippets for the selected host on top of its profile's.
+  The profile column then reads `default+2`.
+
+To sort, click a column header (click again to reverse),
+or press `Ctrl-S` to cycle the column and `Ctrl-R` to reverse.
+
+When the terminal is tall enough,
+a history pane under the list shows the last five sessions of the selected host:
+when, how long, how it ended.
+
+### Snippets page
+
+Edit your rc pieces in place.
+
+#### Keys
+- `Esc` autosaves
+- `Ctrl-S` saves.
+- `n` creates a snippet
+- `c` copy
+- `d` delete
+
+A snippet that sets `PS1`, and every `.prompt` snippet, gets a prompt preview underneath.<br>
+The file name decides what a snippet is (see [Snippet kinds](#snippet-kinds)).
+
+### Profiles page
+
+Each profile has its own prompt and snippets.
+For the prompt, pick a built-in theme, one of your own, or "(server's own)"
+to keep the server's prompt.
+
+#### Keys
+- `n` creates a profile
+- `c` copy,
+- `d` delete
+- `*` makes it the default
 
 ## Configurations
 
@@ -45,9 +102,10 @@ sx init                 # create sample snippets and the default profile
   so names like `10-prompt` and `20-aliases` control the order.
   A snippet in both places is sent once.
   `sx init` creates `20-aliases`, which the default profile sends, and the vim presets below,
-  which stay off until a profile lists them.
+  which stay off until you turn them on in Profiles.
 - `config.toml` holds the profiles (snippets and prompt theme), the default profile,
-  and each host's profile and extra snippets.
+  each host's profile and extra snippets, favorites and last-used times.
+- `history.tsv` has one line per session (time, host, seconds, outcome), trimmed to the newest 1000.
 
 The prompt theme goes after the snippets, so choosing one overrides any `PS1` a snippet sets.
 A fresh setup starts with the `fino` theme.
@@ -63,13 +121,15 @@ the server:
 | `x.vim` | `vim` and `nvim` run with `-u` on this config, through process substitution |
 | `x.tmux` | `tmux` runs with `-f` on this config, all enabled `.tmux` snippets joined like vim |
 | `x.inputrc` | loaded once with `bind -f` |
-| `x.prompt` | not sent as a snippet: it is a prompt theme that a profile can name, see below |
+| `x.prompt` | not sent as a snippet: it is a prompt theme you can pick in Profiles, see below |
 
 ### Vim presets
 
 All the enabled `.vim` snippets are joined, in name order, into one config.
 A later name wins when two set the same option, so the presets work as layers.
 `sx init` creates these, all off.
+For a setup made before they existed, `sx init --presets` adds the ones that are missing:
+it keeps your files, turns nothing on, and re-creates any preset you deleted.
 
 | Snippet | What it sets |
 |---|---|
@@ -87,7 +147,11 @@ Turn on `vim-recommended` or `vim-basic` (not both), then add the layers you wan
 ### Prompt themes
 
 A `.prompt` file contains only the `PS1` string, for example `\[\e[32m\]\u@\h\[\e[0m\]:\w\$ `.<br>
-`sx` puts it in quotes as `export PS1='...'`.
+`sx` puts it in quotes as `export PS1='...'`, and the preview draws it unchanged.
+
+
+To change a built-in theme, press `e` on it in Profiles.<br>
+You get the plain string to edit.
 
 Eleven built-in themes are based on [oh-my-zsh](https://ohmyz.sh/) themes:<br>
 `bira`, `gnzh`, `fino`, `ys`, `box`, `robbyrussell`, `pygmalion`, `candy`, `af-magic`, `lambda` and `cloud`.
@@ -119,6 +183,12 @@ so do not put secrets in snippets.
   you get the plain login shell and a one-line `sx:` message that gives the reason.
 - Payloads over about 24 KB (encoded) trigger a warning.
 - Only bash is supported. zsh and fish rc files are not.
+- Hosts that appear only as hashed entries in `~/.ssh/known_hosts` are not listed.<br>
+  When `HashKnownHosts` is on (the default on some systems), ssh stores a host as `|1|salt|hash`
+  instead of its name, and a hash cannot be turned back into a name.<br>
+  Hosts from `~/.ssh/config` are always listed.<br>
+  To reach a hashed host, type its name in the search box and press Enter,
+  or add a `Host` entry for it in `~/.ssh/config`.
 
 ## Build
 

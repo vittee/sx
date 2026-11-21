@@ -57,8 +57,40 @@ fn user_remote_command_skips() {
 }
 
 #[test]
+fn ctrl_c_exit_is_an_interrupt_but_plain_130_is_not() {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::ExitStatusExt;
+        let killed = std::process::ExitStatus::from_raw(STATUS_CONTROL_C_EXIT as u32);
+        assert_eq!(outcome_of(killed), SshOutcome::Interrupted);
+        let remote_130 = std::process::ExitStatus::from_raw(130);
+        assert_eq!(outcome_of(remote_130), SshOutcome::Exited(130));
+        assert_eq!(outcome_of(std::process::ExitStatus::from_raw(255)), SshOutcome::Exited(255));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(outcome_of(std::process::ExitStatus::from_raw(2)), SshOutcome::Interrupted); // SIGINT
+        assert_eq!(outcome_of(std::process::ExitStatus::from_raw(130 << 8)), SshOutcome::Exited(130));
+        assert_eq!(outcome_of(std::process::ExitStatus::from_raw(9)), SshOutcome::Exited(255)); // SIGKILL
+    }
+    assert_eq!(SshOutcome::Interrupted.code(), 130);
+    assert_eq!(SshOutcome::Exited(7).code(), 7);
+}
+
+#[test]
 fn no_args_skips() {
     assert!(!inject(""));
+}
+
+#[test]
+fn profile_lookup_tries_exact_then_without_user() {
+    let mut cfg = config::Config::default();
+    cfg.profiles.insert("default".into(), config::Profile::default());
+    cfg.hosts.entry("box".into()).or_default().profile = Some(config::PROFILE_OFF.into());
+    assert_eq!(profile_for_target(&cfg, "box"), None);
+    assert_eq!(profile_for_target(&cfg, "me@box"), None);
+    assert_eq!(profile_for_target(&cfg, "other"), Some("default"));
 }
 
 /// Feeds our argv to the real `ssh -G` (prints parsed config, no connection):
@@ -94,11 +126,14 @@ fn argv_puts_our_options_first() {
 }
 
 #[test]
-fn profile_lookup_tries_exact_then_without_user() {
-    let mut cfg = config::Config::default();
-    cfg.profiles.insert("default".into(), config::Profile::default());
-    cfg.hosts.entry("box".into()).or_default().profile = Some(config::PROFILE_OFF.into());
-    assert_eq!(profile_for_target(&cfg, "box"), None);
-    assert_eq!(profile_for_target(&cfg, "me@box"), None);
-    assert_eq!(profile_for_target(&cfg, "other"), Some("default"));
+fn a_ctrl_c_seen_by_sx_is_an_interrupt_whatever_ssh_returns() {
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt;
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+    let status = |code: u32| std::process::ExitStatus::from_raw(if cfg!(unix) { code << 8 } else { code } as _);
+    assert_eq!(finish(true, status(0)), SshOutcome::Interrupted);
+    assert_eq!(finish(true, status(130)), SshOutcome::Interrupted);
+    assert_eq!(finish(false, status(7)), SshOutcome::Exited(7));
+    assert_eq!(finish(false, status(130)), SshOutcome::Exited(130));
 }
