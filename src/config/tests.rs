@@ -621,3 +621,25 @@ fn the_theme_chosen_with_sx_theme_is_remembered_and_carried_into_the_sx_sudo_she
     let Some((out, err)) = run_in_rc_after("export SX_THEME=nope", "echo \"left=${SX_THEME-unset}\"\n") else { return };
     assert!(out.contains("left=unset") && !err.contains("no theme"), "{out}{err}");
 }
+
+#[test]
+fn sx_tmux_gives_every_window_the_rc_and_keeps_your_own_tmux_config() {
+    let Some((out, err)) = run_in_rc("sx-tmux --help\n__sx_tmux_conf\nsx-tmux -V\necho \"rc=$?\"\n") else { return };
+    assert!(!err.contains("command not found"), "{err}");
+    assert!(out.contains("usage: sx-tmux [tmux arguments]"), "{out}");
+    // the pane starts the rc from SX_RC, and falls back to the login shell without it
+    assert!(out.contains(r#"set -g default-command 'bash -c "[ -n \"\$SX_RC\" ] && exec bash --rcfile <("#), "{out}");
+    assert!(out.contains(r#"exec \"\$SHELL\" -l"#), "{out}");
+    // without a tmux snippet the server's own tmux config is loaded
+    assert!(out.contains("source-file -q /etc/tmux.conf"), "{out}");
+    // outside a shell that sx started there is no payload to hand over
+    assert!(err.contains("sx-tmux: this shell was not started by sx") && out.contains("rc=1"), "{out}{err}");
+}
+
+#[test]
+fn sx_tmux_puts_its_default_command_before_your_config_so_yours_wins() {
+    let Some((out, _)) = run_in_rc("__sx_tmux_conf\n") else { return };
+    let ours = out.find("set -g default-command").expect("our default-command");
+    let theirs = out.find("source-file -q /etc/tmux.conf").expect("the server config");
+    assert!(ours < theirs, "{out}");
+}

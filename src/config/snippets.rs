@@ -144,6 +144,40 @@ const SUDO: &str = "sx-sudo() { case ${1-} in -h|--help) printf '%s\\n' 'usage: 
 printf '%s\\n%s\\n' \"$__sx_payload\" \"${__sx_theme_cur-}\" | sudo -H -u \"$u\" bash -c 'read -r P; read -r T; export SX_RC=$P SX_THEME=$T; cd ~ 2>/dev/null; \
 exec bash --rcfile <(printf %s \"$P\" | base64 -d | gunzip) -i <&1'; }\n";
 
+/// `sx-tmux [arguments]` runs tmux so that every window it opens starts with your rc, like the shell
+/// `sx` started: your prompt, aliases and the `sx-*` commands. A pane is a new bash that reads only
+/// the server's own files, so the config tells tmux to start it with the payload. The payload
+/// reaches the tmux server in `SX_RC`. Your tmux config is loaded as usual (or your tmux snippet
+/// when you have one, as the `tmux` wrapper does), and a `default-command` you set yourself wins.
+/// Only a tmux server that `sx-tmux` starts is changed: an already running one keeps its own.
+const TMUX: &str = r#"__sx_tmux_conf() {
+  local f
+  cat <<'EOT'
+set -g default-command 'bash -c "[ -n \"\$SX_RC\" ] && exec bash --rcfile <(printf %s \"\$SX_RC\" | base64 -d | gunzip) -i; exec \"\$SHELL\" -l"'
+EOT
+  if declare -F __sx_tmuxconf >/dev/null; then
+    __sx_tmuxconf
+  else
+    echo 'source-file -q /etc/tmux.conf'
+    for f in ~/.tmux.conf "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"; do
+      [ -f "$f" ] && { printf 'source-file -q "%s"\n' "$f"; break; }
+    done
+  fi
+}
+sx-tmux() {
+  case ${1-} in
+    -h|--help)
+      printf '%s\n' 'usage: sx-tmux [tmux arguments]' \
+        'Runs tmux so that every window has your prompt, aliases and sx-* commands.' \
+        'It takes the same arguments as tmux, and starts or attaches a session when there are none.' \
+        'A tmux server that is already running keeps its own shells.'
+      return;;
+  esac
+  [ -n "${__sx_payload-}" ] || { echo 'sx-tmux: this shell was not started by sx' >&2; return 1; }
+  SX_RC=$__sx_payload command tmux -f <(__sx_tmux_conf) "$@"
+}
+"#;
+
 /// The shell that `sx-sudo` starts gets the theme you chose with `sx-theme` in `SX_THEME`, and the
 /// rc applies it last, since the payload only holds the theme of the profile. Without `sx-theme`
 /// there is nothing to apply, and a name the rc does not know is ignored.
@@ -329,6 +363,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
     }
     push_block(&mut out, "clip", CLIP);
     push_block(&mut out, "sx-sudo", SUDO);
+    push_block(&mut out, "sx-tmux", TMUX);
     if let Some(name) = p.prompt.as_deref()
         && let Some(text) = theme_text(dir, name)
     {

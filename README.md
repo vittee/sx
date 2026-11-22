@@ -227,7 +227,7 @@ with a made-up user, host and directory, a git branch and a failed command, so y
 The preview needs bash 4.4 or newer and a UTF-8 locale. Without them it prints the names.<br>
 `sx-theme -l` lists the names, and Tab completes them.<br>
 `sxt` is a short alias for it.<br>
-`--help` prints the usage of `sx-theme`, `sx-sudo` and `clip`.<br>
+`--help` prints the usage of `sx-theme`, `sx-sudo`, `sx-tmux` and `clip`.<br>
 It lasts until you exit, and the profile's theme is used again on the next connection.
 
 ### Copy to your clipboard
@@ -245,6 +245,17 @@ Inside tmux, add `set -g set-clipboard on` to your tmux config.
 It sends your setup to `sudo` again, through its standard input.<br>
 The shell starts in the user's home directory, as with `sudo -i`, but it is not a login shell,
 so the user's `.profile` does not run.<br>
+
+### tmux
+
+A tmux window starts a new bash that reads only the server's own files, so it has none of your aliases or `sx-*` commands.<br>
+`sx-tmux` starts tmux so that every window gets your setup, the same as the shell `sx` started.<br>
+It takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-tmux attach`.
+
+Your tmux config is loaded as usual, or your tmux snippet when you have one.<br>
+A `default-command` of your own wins over ours.<br>
+A tmux server that was already running keeps its own shells, so quit it first (`tmux kill-server`).<br>
+
 
 ### Window and tab title
 
