@@ -221,3 +221,12 @@ fn the_preview_shows_a_directory_a_branch_and_a_failed_command() {
     let shown = text(&render_ps1(r"\W $(__sx_git)$(__sx_rc)"));
     assert_eq!(shown, ["sx  (main) ✗1"]);
 }
+
+#[test]
+fn every_built_in_theme_shows_the_user_and_the_host() {
+    for (name, text) in THEMES {
+        let ps1 = extract_ps1(text).unwrap();
+        assert!(ps1.contains(r"\u"), "{name} has no user name: {ps1}");
+        assert!(ps1.contains(r"\h"), "{name} has no host name: {ps1}");
+    }
+}

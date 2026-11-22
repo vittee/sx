@@ -49,11 +49,11 @@ pub const THEMES: &[(&str, &str)] = &[
     ),
     (
         "red-root-style",
-        "export PS1='\\[\\e[1;31m\\][\\h]\\[\\e[0m\\] \\w \\[\\e[1;31m\\]\\$\\[\\e[0m\\] '\n",
+        "export PS1='\\[\\e[1;31m\\][\\u@\\h]\\[\\e[0m\\] \\w \\[\\e[1;31m\\]\\$\\[\\e[0m\\] '\n",
     ),
     (
         "arrow",
-        "export PS1='\\[\\e[32m\\]\\h\\[\\e[0m\\] \\[\\e[36m\\]\\w\\[\\e[0m\\] \\[\\e[35m\\]❯ \\$\\[\\e[0m\\] '\n",
+        "export PS1='\\[\\e[32m\\]\\u@\\h\\[\\e[0m\\] \\[\\e[36m\\]\\w\\[\\e[0m\\] \\[\\e[35m\\]❯ \\$\\[\\e[0m\\] '\n",
     ),
     (
         "timestamp",
@@ -136,7 +136,7 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "robbyrussell",
         concat!(
-            r#"export PS1='\[\e[1;97;44m\] \h \[\e[0m\] \[\e[1;36m\]\w\[\e[1;34m\]"#,
+            r#"export PS1='\[\e[1;97;44m\] \u@\h \[\e[0m\] \[\e[1;36m\]\w\[\e[1;34m\]"#,
             git_inline!(),
             r#"\[\e[31m\]"#,
             rc_inline!(),
@@ -184,7 +184,7 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "lambda",
         concat!(
-            r#"export PS1='\[\e[1;35m\]\h\[\e[0m\] \[\e[36m\]\w\[\e[33m\]"#,
+            r#"export PS1='\[\e[1;35m\]\u@\h\[\e[0m\] \[\e[36m\]\w\[\e[33m\]"#,
             git_inline!(),
             r#"\[\e[31m\]"#,
             rc_inline!(),
@@ -197,7 +197,7 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "cloud",
         concat!(
-            r#"export PS1='\[\e[1;36m\]☁ \[\e[0m\]\[\e[1;38;5;16;48;5;45m\] \h \[\e[0m\] \[\e[1;34m\]\w\[\e[0;33m\]"#,
+            r#"export PS1='\[\e[1;36m\]☁ \[\e[0m\]\[\e[1;38;5;16;48;5;45m\] \u@\h \[\e[0m\] \[\e[1;34m\]\w\[\e[0;33m\]"#,
             git_inline!(),
             r#"\[\e[31m\]"#,
             rc_inline!(),
