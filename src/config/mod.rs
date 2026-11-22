@@ -404,7 +404,7 @@ impl Config {
     }
 }
 
-/// First run: create the sample aliases (on), the vim presets (off) and the default profile with
+/// First run: create the sample aliases (on), the vim presets and the shell presets (off) and the default profile with
 /// the default prompt theme.
 /// Returns true if anything was created.
 pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
@@ -414,7 +414,7 @@ pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
     if !snippets_dir(dir).exists() {
         fs::create_dir_all(snippets_dir(dir))?;
         write_snippet(dir, "20-aliases", SAMPLE_ALIASES)?;
-        for (name, text) in presets::vim_presets() {
+        for (name, text) in presets::vim_presets().into_iter().chain(presets::shell_presets()) {
             write_snippet(dir, name, &text)?;
         }
         changed = true;
@@ -433,13 +433,13 @@ pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
     Ok((cfg, changed))
 }
 
-/// Creates the vim presets that are missing from `snippets/`, for a setup made before they
+/// Creates the presets (vim and shell) that are missing from `snippets/`, for a setup made before they
 /// existed. Files that are there are left alone, and nothing is turned on in any profile.
 /// Returns the names it created.
 pub fn add_missing_presets(dir: &Path) -> io::Result<Vec<String>> {
     let have = list_snippets(dir);
     let mut added = Vec::new();
-    for (name, text) in presets::vim_presets() {
+    for (name, text) in presets::vim_presets().into_iter().chain(presets::shell_presets()) {
         if !have.iter().any(|n| n == name) {
             write_snippet(dir, name, &text)?;
             added.push(name.to_string());

@@ -1,4 +1,5 @@
-//! Ready-made vim snippets that `sx init` creates, all off until you turn them on in Profiles.
+//! Ready-made snippets that `sx init` creates, all off until you turn them on in Profiles: the vim
+//! ones, and `colorterm`.
 //!
 //! `vim -u` skips the server's own vimrc, and the enabled `.vim` snippets are joined in name order
 //! into one config, so these are small layers. A later name wins when two set the same option.
@@ -101,6 +102,17 @@ set background=dark
 set t_Co=256
 silent! colorscheme desert
 "#;
+
+const COLORTERM: &str = "# sx colorterm: tell programs on the server that your terminal has 24-bit color
+export COLORTERM=truecolor
+";
+
+/// Shell snippets created on the first run, off until you turn them on. ssh does not send
+/// `COLORTERM`, so vim and `less` on a server fall back to 256 colors. Turn this on only when your
+/// terminal supports truecolor (Windows Terminal, iTerm2, kitty and WezTerm do).
+pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
+    vec![("colorterm", COLORTERM.to_string())]
+}
 
 /// Names and texts of the vim snippets created on the first run. `vim-recommended` is built from
 /// `vim-basic` plus its own extras.

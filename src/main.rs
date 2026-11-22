@@ -35,7 +35,7 @@ Usage:
   sx [ssh args] <host>                                        like ssh, but the remote bash loads your rc
   sx <host> --options <name>                                  use the host's saved options <name> (anywhere in the arguments)
   sx init [--presets]                                         create the sample snippets and default profile,
-                                                              --presets adds the vim presets that are missing, switched off
+                                                              --presets adds the presets that are missing, switched off
   sx --dry-run [ssh args] <host>                              print the ssh command instead of running it
   sx completions <bash|zsh|fish|powershell|nushell>           print the completion script
   sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]
@@ -282,7 +282,7 @@ fn init(rest: &[String]) -> ExitCode {
     }
     if presets {
         match config::add_missing_presets(&dir) {
-            Ok(added) if added.is_empty() => log::ok_out("no vim preset is missing"),
+            Ok(added) if added.is_empty() => log::ok_out("no preset is missing"),
             Ok(added) => log::ok_out(format!("added {} (off until you turn them on in Profiles)", added.join(", "))),
             Err(e) => {
                 log::error(e.to_string());

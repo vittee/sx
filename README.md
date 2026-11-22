@@ -60,7 +60,7 @@ sx                                                                   # open the 
 sx [ssh args] <host>                                                 # like ssh, with your rc injected
 sx <host> --options <name>                                           # use the options named <name>, saved for the host (Ctrl-O in the TUI)
 sx --dry-run [ssh args] <host>                                       # print the ssh command, do not run it
-sx init [--presets]                                                  # create sample snippets and the default profile, --presets adds the vim presets that are missing, switched off
+sx init [--presets]                                                  # create sample snippets and the default profile, --presets adds the presets that are missing, switched off
 sx completions <bash|zsh|fish|powershell|nushell>                    # print a completion script
 sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]  # set up shell completion (asks first)
 sx --version                                                         # print the sx version (ssh's -V shows the ssh one)
@@ -142,7 +142,7 @@ to keep the server's prompt.
   A host gets its profile's snippets plus its own extras, joined in name order,
   so names like `10-prompt` and `20-aliases` control the order.
   A snippet in both places is sent once.
-  `sx init` creates `20-aliases`, which the default profile sends, and the vim presets below,
+  `sx init` creates `20-aliases`, which the default profile sends, and the presets below,
   which stay off until you turn them on in Profiles.
 - `config.toml` holds the profiles (snippets and prompt theme), the default profile,
   each host's profile, extra snippets and connection options, favorites and last-used times.
@@ -169,7 +169,7 @@ the server:
 All the enabled `.vim` snippets are joined, in name order, into one config.
 A later name wins when two set the same option, so the presets work as layers.
 `sx init` creates these, all off.
-For a setup made before they existed, `sx init --presets` adds the ones that are missing:
+For a setup made before they existed, `sx init --presets` adds the presets that are missing, vim and shell:
 it keeps your files, turns nothing on, and re-creates any preset you deleted.
 
 | Snippet | What it sets |
@@ -184,6 +184,13 @@ it keeps your files, turns nothing on, and re-creates any preset you deleted.
 | `vim-no-traces` | no swap, backup, undo or viminfo files on the server |
 
 Turn on `vim-recommended` or `vim-basic` (not both), then add the layers you want.
+
+### Truecolor
+
+`ssh` does not send `COLORTERM`, so `vim` and `less` on a server fall back to 256 colors.<br>
+The `colorterm` snippet sets `COLORTERM=truecolor`. It is off until you turn it on in Profiles.<br>
+Turn it on only when your terminal supports 24-bit color.
+Windows Terminal, iTerm2, kitty and WezTerm do.
 
 ### Prompt themes
 
