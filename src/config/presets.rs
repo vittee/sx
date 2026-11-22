@@ -1,5 +1,5 @@
 //! Ready-made snippets that `sx init` creates, all off until you turn them on in Profiles: the vim
-//! ones, and `colorterm`.
+//! ones, `colorterm` and `no-history`.
 //!
 //! `vim -u` skips the server's own vimrc, and the enabled `.vim` snippets are joined in name order
 //! into one config, so these are small layers. A later name wins when two set the same option.
@@ -107,11 +107,17 @@ const COLORTERM: &str = "# sx colorterm: tell programs on the server that your t
 export COLORTERM=truecolor
 ";
 
+const NO_HISTORY: &str = "# sx no-history: this shell does not write ~/.bash_history on the server
+unset HISTFILE
+";
+
 /// Shell snippets created on the first run, off until you turn them on. ssh does not send
-/// `COLORTERM`, so vim and `less` on a server fall back to 256 colors. Turn this on only when your
-/// terminal supports truecolor (Windows Terminal, iTerm2, kitty and WezTerm do).
+/// `COLORTERM`, so vim and `less` on a server fall back to 256 colors. Turn `colorterm` on only when
+/// your terminal supports truecolor (Windows Terminal, iTerm2, kitty and WezTerm do). `no-history`
+/// is for servers that keep `~/.bash_history` empty on purpose: `sx` starts bash without the login
+/// files that usually say so.
 pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
-    vec![("colorterm", COLORTERM.to_string())]
+    vec![("colorterm", COLORTERM.to_string()), ("no-history", NO_HISTORY.to_string())]
 }
 
 /// Names and texts of the vim snippets created on the first run. `vim-recommended` is built from

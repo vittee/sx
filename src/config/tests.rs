@@ -10,7 +10,7 @@ fn setup() -> (tempfile::TempDir, Config) {
 #[test]
 fn first_run_creates_samples_and_default_profile() {
     let (tmp, cfg) = setup();
-    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "colorterm", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert_eq!(cfg.profiles["default"].snippets, ["20-aliases"]);
     assert_eq!(cfg.profiles["default"].prompt.as_deref(), Some(prompt::DEFAULT_THEME));
     assert!(!ensure_initialized(tmp.path()).unwrap().1);
@@ -446,4 +446,16 @@ fn colorterm_is_created_off_and_sets_truecolor_when_turned_on() {
     // `sx init --presets` brings it back for a setup that has no such file.
     fs::remove_file(snippets_dir(tmp.path()).join("colorterm.sh")).unwrap();
     assert_eq!(add_missing_presets(tmp.path()).unwrap(), ["colorterm"]);
+}
+
+#[test]
+fn no_history_is_created_off_and_unsets_histfile_when_turned_on() {
+    let (tmp, mut cfg) = setup();
+    assert_eq!(read_snippet(tmp.path(), "no-history").unwrap().lines().last(), Some("unset HISTFILE"));
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("unset HISTFILE"), "off by default");
+    cfg.toggle_snippet("default", "no-history");
+    assert!(build_rc(tmp.path(), &cfg, "default").contains("unset HISTFILE
+"));
+    fs::remove_file(snippets_dir(tmp.path()).join("no-history.sh")).unwrap();
+    assert_eq!(add_missing_presets(tmp.path()).unwrap(), ["no-history"]);
 }

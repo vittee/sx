@@ -192,6 +192,15 @@ The `colorterm` snippet sets `COLORTERM=truecolor`. It is off until you turn it 
 Turn it on only when your terminal supports 24-bit color.
 Windows Terminal, iTerm2, kitty and WezTerm do.
 
+### No history on the server
+
+A normal login reads the server's login files, and a hardened server may keep `~/.bash_history` empty there, for example with `unset HISTFILE`.<br>
+`sx` starts bash without those files, so that rule is lost and bash writes the history file again.<br>
+The `no-history` snippet runs `unset HISTFILE`, so this shell writes no history file.
+It is off until you turn it on in Profiles.<br>
+Put it in the profile you use for those servers, so other servers keep their history.
+Up-arrow history still works during the session.
+
 ### Prompt themes
 
 A `.prompt` file contains only the `PS1` string, for example `\[\e[32m\]\u@\h\[\e[0m\]:\w\$ `.<br>

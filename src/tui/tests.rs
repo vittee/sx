@@ -440,10 +440,10 @@ fn delete_snippet_needs_confirmation_and_cleans_profiles() {
     app.switch_tab(Tab::Snippets);
     key(&mut app, KeyCode::Char('d'));
     key(&mut app, KeyCode::Char('n')); // cancel
-    assert_eq!(app.snippets, ["20-aliases", "colorterm", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["20-aliases", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     key(&mut app, KeyCode::Char('d'));
     key(&mut app, KeyCode::Char('y'));
-    assert_eq!(app.snippets, ["colorterm", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert!(app.cfg.profiles["default"].snippets.is_empty());
 }
 
@@ -455,7 +455,7 @@ fn duplicate_snippet_prompts_with_a_copy_name_and_copies_the_text() {
     assert!(matches!(&app.mode, Mode::Input(InputKind::DuplicateSnippet(f), b) if f == "20-aliases" && b == "20-aliases-copy"));
     assert!(render(&mut app).contains("copy of snippet 20-aliases as: 20-aliases-copy"));
     key(&mut app, KeyCode::Enter);
-    assert_eq!(app.snippets, ["20-aliases", "20-aliases-copy", "colorterm", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["20-aliases", "20-aliases-copy", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert_eq!(app.editor_name.as_deref(), Some("20-aliases-copy"));
     assert_eq!(
         config::read_snippet(&app.dir, "20-aliases-copy").unwrap(),
@@ -499,7 +499,7 @@ fn duplicate_snippet_rejects_existing_or_invalid_names_and_can_be_cancelled() {
     assert!(app.status.as_ref().is_some_and(|s| s.1), "{:?}", app.status);
     key(&mut app, KeyCode::Char('c'));
     key(&mut app, KeyCode::Esc);
-    assert_eq!(app.snippets, ["20-aliases", "colorterm", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["20-aliases", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert!(matches!(app.mode, Mode::Normal));
 }
 
@@ -1234,7 +1234,7 @@ fn snippet_names_are_colored_by_kind() {
     let buf = term.backend().buffer();
     for (i, name) in app.snippets.iter().enumerate() {
         let want = match name.as_str() {
-            "20-aliases" | "colorterm" => Color::Green,
+            "20-aliases" | "colorterm" | "no-history" => Color::Green,
             "t.tmux" => Color::Yellow,
             "i.inputrc" => Color::Blue,
             "p.prompt" => Color::Magenta,
