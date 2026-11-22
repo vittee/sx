@@ -51,20 +51,20 @@ impl App {
                 ("←/→", "options"),
                 ("^N", "new options"),
                 ("^D", "delete options"),
-                ("Enter", "connect once"),
                 ("^S", "save"),
+                ("Enter", "connect once"),
                 ("Esc", "cancel"),
             ],
             (Mode::OptionsPicker(_), _) => &[("Up/Down", "choose"), ("Enter", "connect"), ("Esc", "close")],
             (_, Tab::Hosts) => &[
                 ("Enter", "connect"),
                 ("^P", "profile"),
-                ("^F", "fav"),
                 ("^E", "extras"),
-                ("^O", "options"),
+                ("^O", "opts"),
                 ("^L", "pick"),
-                ("^S", "sort"),
-                ("^R", "rev"),
+                ("^F", "fav"),
+                ("^S/R", "sort"),
+                ("Tab", "next"),
                 ("Esc", "quit"),
             ],
             (_, Tab::Snippets) if self.editor_focus => &[("Ctrl-S", "save"), ("Esc", "done (autosaves)")],
@@ -107,7 +107,7 @@ impl App {
         for (key, desc) in hints {
             let key_style = if pick_off && key == "^L" { desc_style } else { key_style };
             spans.push(Span::styled(key, key_style));
-            spans.push(Span::styled(format!(" {desc}  "), desc_style));
+            spans.push(Span::styled(format!(" {desc} "), desc_style));
         }
         f.render_widget(Paragraph::new(Line::from(spans)), bottom);
     }

@@ -1884,8 +1884,10 @@ fn the_list_pages_use_ctrl_keys_and_plain_letters_do_nothing() {
 }
 
 #[test]
-fn esc_goes_back_one_pane_in_profiles() {
+fn the_footer_shows_tab_on_every_page_and_esc_goes_back_one_pane_in_profiles() {
     let (_t, mut app) = app();
+    let hosts = render(&mut app);
+    assert!(hosts.contains("Tab next") && hosts.contains("^S/R sort") && hosts.contains("Esc quit") && hosts.contains("F2"), "{hosts}");
     app.switch_tab(Tab::Profiles);
     key(&mut app, KeyCode::Right);
     assert_eq!(app.prof_focus, ProfFocus::Prompt);
