@@ -325,14 +325,17 @@ fn click_star_toggles_favorite_and_sorts_first() {
 }
 
 #[test]
-fn click_profile_column_and_arrows_cycle_profile() {
+fn click_profile_column_and_ctrl_p_cycle_profile() {
     let (_t, mut app) = app();
     app.cfg.add_profile("work").unwrap();
     render(&mut app);
     let list = app.hits.hosts_list;
     click(&mut app, list.x + COL_STAR + COL_ALIAS + COL_TARGET + 1, list.y);
     assert_eq!(app.cfg.profile_for("alpha"), Some("work"));
-    key(&mut app, KeyCode::Right); // work -> off
+    key(&mut app, KeyCode::Right); // an arrow key must not change the profile
+    key(&mut app, KeyCode::Left);
+    assert_eq!(app.cfg.profile_for("alpha"), Some("work"));
+    ctrl(&mut app, 'p'); // work -> off
     assert_eq!(app.cfg.profile_for("alpha"), None);
     assert!(render(&mut app).contains("off"));
     // persisted

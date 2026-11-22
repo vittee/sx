@@ -92,8 +92,9 @@ Typing `root@web` filters the list on `web` and connects to the selected host as
 connection only.
 
 #### Keys
-- `Left`/`Right`, or a click on the profile column,
+- `Ctrl-P`, or a click on the profile column,
   changes the host's profile (`-` means off, plain ssh).
+  The arrow keys only move in the list, so a stray key cannot change a profile.
 - `Ctrl-F`, or a click on the star, marks a favorite.
 - `Ctrl-E` picks extra snippets for the selected host on top of its profile's.
   The profile column then reads `default+2`.

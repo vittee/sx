@@ -58,7 +58,7 @@ impl App {
             (Mode::OptionsPicker(_), _) => &[("Up/Down", "choose"), ("Enter", "connect"), ("Esc", "close")],
             (_, Tab::Hosts) => &[
                 ("Enter", "connect"),
-                ("←/→", "profile"),
+                ("^P", "profile"),
                 ("^F", "fav"),
                 ("^E", "extras"),
                 ("^O", "options"),
