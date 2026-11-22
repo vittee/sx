@@ -130,6 +130,9 @@ pub struct App {
     editor_focus: bool,
     prof_state: ListState,
     prompt_state: ListState,
+    /// The row you are looking at in the prompt list, with the profile it belongs to. It is only a
+    /// preview until `Enter` applies it. `None`: show the profile's own prompt.
+    prompt_cursor: Option<(String, usize)>,
     chk_state: ListState,
     /// First visible grid row of the snippet checklist.
     chk_top: usize,
@@ -189,6 +192,7 @@ impl App {
             editor_focus: false,
             prof_state: ListState::default().with_selected(Some(0)),
             prompt_state: ListState::default().with_selected(Some(0)),
+            prompt_cursor: None,
             chk_state: ListState::default().with_selected(Some(0)),
             chk_top: 0,
             host_chk: ListState::default().with_selected(Some(0)),

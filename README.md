@@ -127,7 +127,8 @@ The file name decides what a snippet is (see [Snippet kinds](#snippet-kinds)).
 
 Each profile has its own prompt and snippets.
 For the prompt, pick a built-in theme, one of your own, or "(server's own)"
-to keep the server's prompt.
+to keep the server's prompt.<br>
+The arrow keys only preview a theme, `Enter` uses it for the profile.
 
 #### Keys
 - `Ctrl-N` creates a profile

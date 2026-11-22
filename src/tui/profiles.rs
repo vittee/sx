@@ -32,18 +32,37 @@ impl App {
         theme.and_then(|t| names.iter().position(|n| *n == t)).map_or(0, |i| i + 1)
     }
 
+    /// The row you are looking at: the one you moved to, or else the profile's own prompt.
+    pub(super) fn prompt_cursor_row(&self) -> usize {
+        match (&self.prompt_cursor, self.selected_profile()) {
+            (Some((p, i)), Some(sel)) if *p == sel => (*i).min(self.theme_names().len()),
+            _ => self.prompt_index(),
+        }
+    }
+
     /// Picks a prompt row for the selected profile and saves it.
     pub(super) fn set_prompt_index(&mut self, i: usize) {
         let Some(profile) = self.selected_profile() else { return };
         let theme = i.checked_sub(1).and_then(|t| self.theme_names().get(t).cloned());
         self.cfg.set_prompt(&profile, theme.as_deref());
+        self.prompt_cursor = None;
         self.save_cfg();
     }
 
+    /// Moves the cursor in the prompt list. It only shows the preview, `apply_prompt` saves it.
     pub(super) fn move_prompt(&mut self, delta: isize) {
+        let Some(profile) = self.selected_profile() else { return };
         let last = self.theme_names().len() as isize;
-        let next = (self.prompt_index() as isize + delta).clamp(0, last) as usize;
-        self.set_prompt_index(next);
+        let next = (self.prompt_cursor_row() as isize + delta).clamp(0, last) as usize;
+        self.prompt_cursor = Some((profile, next));
+    }
+
+    /// Uses the row under the cursor as the prompt of the selected profile.
+    pub(super) fn apply_prompt(&mut self) {
+        let row = self.prompt_cursor_row();
+        self.set_prompt_index(row);
+        let name = self.theme_names().get(row.wrapping_sub(1)).cloned();
+        self.say(format!("prompt: {}", name.as_deref().unwrap_or("the server's own")));
     }
 
     /// Opens the selected prompt theme for editing in the Snippets tab. A built-in theme is first
@@ -52,7 +71,7 @@ impl App {
     pub(super) fn edit_prompt(&mut self) {
         let Some(profile) = self.selected_profile() else { return };
         let names = self.theme_names();
-        let current = self.prompt_index().checked_sub(1).and_then(|i| names.get(i).cloned());
+        let current = self.prompt_cursor_row().checked_sub(1).and_then(|i| names.get(i).cloned());
         let target = match current {
             Some(n) if config::is_prompt_snippet(&n) => n,
             other => {
@@ -169,9 +188,8 @@ impl App {
                     KeyCode::Up => self.move_prompt(-1),
                     KeyCode::Down => self.move_prompt(1),
                     KeyCode::Char('e') if ctrl => self.edit_prompt(),
-                    KeyCode::Right | KeyCode::Enter if !self.grid_items().is_empty() => {
-                        self.prof_focus = ProfFocus::Snippets;
-                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => self.apply_prompt(),
+                    KeyCode::Right if !self.grid_items().is_empty() => self.prof_focus = ProfFocus::Snippets,
                     KeyCode::Left | KeyCode::Esc => self.prof_focus = ProfFocus::List,
                     _ => {}
                 }
@@ -186,7 +204,10 @@ impl App {
         match k.code {
             KeyCode::Up => Self::move_sel(&mut self.prof_state, len, -1),
             KeyCode::Down => Self::move_sel(&mut self.prof_state, len, 1),
-            KeyCode::Right | KeyCode::Enter => self.prof_focus = ProfFocus::Prompt,
+            KeyCode::Right | KeyCode::Enter => {
+                self.prompt_cursor = None;
+                self.prof_focus = ProfFocus::Prompt;
+            }
             KeyCode::Char('n') if ctrl => self.mode = Mode::Input(InputKind::NewProfile, String::new()),
             KeyCode::Char('y') if ctrl => {
                 if let Some(p) = self.selected_profile() {
@@ -236,7 +257,12 @@ impl App {
         } else if inside(prompts, x, y) {
             let i = self.prompt_state.offset() + (y - prompts.y) as usize;
             if i <= self.theme_names().len() {
-                self.set_prompt_index(i);
+                // the radio mark applies the row, the name only previews it
+                if x < prompts.x + 4 {
+                    self.set_prompt_index(i);
+                } else if let Some(profile) = self.selected_profile() {
+                    self.prompt_cursor = Some((profile, i));
+                }
                 self.prof_focus = ProfFocus::Prompt;
             }
         } else if inside(clist, x, y) {
@@ -362,6 +388,7 @@ impl App {
         self.hits.prompt_list = list_a;
 
         let current = self.prompt_index();
+        let cursor = self.prompt_cursor_row();
         let theme_names = self.theme_names();
         let names = std::iter::once("(server's own)").chain(theme_names.iter().map(String::as_str));
         let items: Vec<ListItem> = names
@@ -375,7 +402,7 @@ impl App {
             })
             .collect();
         let hl = if focused { Style::new().add_modifier(Modifier::REVERSED) } else { Style::new() };
-        self.prompt_state.select(Some(current));
+        self.prompt_state.select(Some(cursor));
         // Reserve the last column for the scrollbar so the selection bar never covers it.
         let total = theme_names.len() + 1;
         let rows_a = if total > list_a.height as usize {
@@ -386,7 +413,7 @@ impl App {
         f.render_stateful_widget(List::new(items).highlight_style(hl), rows_a, &mut self.prompt_state);
         Self::scrollbar(f, list_a, total, self.prompt_state.offset());
 
-        let shown = match current.checked_sub(1) {
+        let shown = match cursor.checked_sub(1) {
             Some(t) => theme_names
                 .get(t)
                 .and_then(|n| config::theme_ps1(&self.dir, n))
@@ -394,6 +421,7 @@ impl App {
                 .unwrap_or_default(),
             None => vec![Line::styled("the server keeps its own prompt", Style::new().add_modifier(Modifier::DIM))],
         };
-        f.render_widget(Paragraph::new(shown).block(Block::bordered().title(" Preview ")), prev_a);
+        let title = if cursor == current { " Preview ".to_string() } else { " Preview (Enter to use it) ".to_string() };
+        f.render_widget(Paragraph::new(shown).block(Block::bordered().title(title)), prev_a);
     }
 }

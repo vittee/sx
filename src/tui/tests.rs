@@ -591,21 +591,30 @@ fn arrow_keys_choose_and_save_a_prompt() {
     app.switch_tab(Tab::Profiles);
     key(&mut app, KeyCode::Right); // focus the prompt picker
     assert_eq!(app.prof_focus, ProfFocus::Prompt);
-    key(&mut app, KeyCode::Down); // the default theme -> the next one
     let at = prompt::THEMES.iter().position(|t| t.0 == prompt::DEFAULT_THEME).unwrap();
     let next = prompt::THEMES[at + 1].0;
+    key(&mut app, KeyCode::Down); // the default theme -> the next one: only a preview
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME), "moving does not apply");
+    let screen = render(&mut app);
+    assert!(screen.contains(&format!("(•) {}", prompt::DEFAULT_THEME)) && screen.contains("Enter to use it"), "{screen}");
+    assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
+    key(&mut app, KeyCode::Enter); // now it is saved
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(next));
     assert!(render(&mut app).contains(&format!("(•) {next}")));
-    assert_eq!(Config::load(&app.dir).unwrap(), app.cfg); // saved immediately
+    assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
     for _ in 0..20 {
         key(&mut app, KeyCode::Down); // stops at the last theme
     }
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some(next));
+    key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::THEMES.last().unwrap().0));
     for _ in 0..20 {
         key(&mut app, KeyCode::Up); // stops at "(server's own)"
     }
+    assert!(render(&mut app).contains("the server keeps its own prompt"), "the preview follows the cursor");
+    assert!(prompt_of(&app, "default").is_some());
+    key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "default"), None);
-    assert!(render(&mut app).contains("the server keeps its own prompt"));
 }
 
 #[test]
@@ -614,12 +623,16 @@ fn clicking_a_theme_picks_it_and_wheel_moves_it() {
     app.switch_tab(Tab::Profiles);
     render(&mut app);
     let l = app.hits.prompt_list;
-    click(&mut app, l.x + 2, l.y + 1); // first theme: minimal
-    assert_eq!(prompt_of(&app, "default").as_deref(), Some("minimal"));
+    click(&mut app, l.x + 8, l.y + 1); // the name of the first theme: a preview only
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME));
+    assert_eq!(app.prompt_cursor_row(), 1);
     assert_eq!(app.prof_focus, ProfFocus::Prompt);
-    wheel(&mut app, l.x + 2, l.y + 1, false);
-    assert_eq!(prompt_of(&app, "default").as_deref(), Some("green"));
-    click(&mut app, l.x + 2, l.y); // "(server's own)"
+    wheel(&mut app, l.x + 8, l.y + 1, false);
+    assert_eq!(app.prompt_cursor_row(), 2);
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME));
+    click(&mut app, l.x + 1, l.y + 1); // the radio mark applies the row
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some("minimal"));
+    click(&mut app, l.x + 1, l.y); // "(server's own)"
     assert_eq!(prompt_of(&app, "default"), None);
 }
 
@@ -634,9 +647,11 @@ fn each_profile_keeps_its_own_prompt() {
     key(&mut app, KeyCode::Right);
     key(&mut app, KeyCode::Down); // minimal
     key(&mut app, KeyCode::Down); // green
+    key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "work").as_deref(), Some("green"));
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME));
     key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "work").as_deref(), Some("two-line"));
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME)); // untouched
 }
@@ -651,6 +666,8 @@ fn prompt_choice_changes_the_payload() {
     for _ in 0..10 {
         key(&mut app, KeyCode::Up);
     }
+    assert!(config::build_rc(&app.dir, &app.cfg, "default").contains("export PS1="), "moving does not apply");
+    key(&mut app, KeyCode::Enter);
     assert!(!config::build_rc(&app.dir, &app.cfg, "default").contains("export PS1="));
 }
 
@@ -856,6 +873,7 @@ fn prompt_snippets_are_themes_not_snippets_to_send() {
     for _ in 0..40 {
         key(&mut app, KeyCode::Down);
     }
+    key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "default").as_deref(), Some("mine.prompt"));
     let screen = render(&mut app);
     assert!(screen.contains("(•) mine.prompt"), "listed and selected in the prompt picker: {screen}");
