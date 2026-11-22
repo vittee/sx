@@ -3,17 +3,24 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-/// Helper functions for the two-line themes. Both keep `$?` intact so `__sx_rc` still sees the
-/// status of the command you ran, even though `__sx_git` is expanded first.
-macro_rules! sx_fns {
+/// The git branch and the exit status as code inside `PS1`, with no function to define. A prompt that
+/// calls a function breaks in a shell that has the prompt but not the function (`sudo -i`, `su`,
+/// `tmux`), because functions are not inherited and `PS1` is. Both substitutions end with `exit`, so
+/// `$?` keeps the status of the command you ran for the one after them.
+macro_rules! git_inline {
     () => {
-        r#"__sx_git() { local s=$? b; b=$(git branch --show-current 2>/dev/null) && [ -n "$b" ] && printf ' (%s)' "$b"; return $s; }
-__sx_rc() { local c=$?; [ "$c" -ne 0 ] && printf ' ✗%s' "$c"; return $c; }
-"#
+        r#"$(s=$?;b=$(git branch --show-current 2>/dev/null)&&[ -n "$b" ]&&printf " (%s)" "$b";exit $s)"#
     };
 }
 
-const SX_FNS: &str = sx_fns!();
+macro_rules! rc_inline {
+    () => {
+        r#"$(c=$?;[ $c -ne 0 ]&&printf " ✗%s" $c;exit $c)"#
+    };
+}
+
+const GIT: &str = git_inline!();
+const RC: &str = rc_inline!();
 
 /// Built-in prompt themes: (name, snippet text).
 ///
@@ -34,8 +41,9 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "git-branch",
         concat!(
-            "__sx_git() { local b; b=$(git branch --show-current 2>/dev/null) && [ -n \"$b\" ] && printf ' (%s)' \"$b\"; }\n",
-            r#"export PS1='\[\e[32m\]\u@\h\[\e[0m\]:\[\e[34m\]\w\[\e[33m\]$(__sx_git)\[\e[0m\] \$ '
+            r#"export PS1='\[\e[32m\]\u@\h\[\e[0m\]:\[\e[34m\]\w\[\e[33m\]"#,
+            git_inline!(),
+            r#"\[\e[0m\] \$ '
 "#
         ),
     ),
@@ -55,8 +63,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "bira",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[36m\]╭─\[\e[0m\]\[\e[1;37;42m\] \u@\h \[\e[0m\] \[\e[1;34m\]\w\[\e[0m\]\[\e[33m\]$(__sx_git)\[\e[0m\]\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[36m\]╰─\[\e[1m\]\$\[\e[0m\] '
+            r#"export PS1='\[\e[36m\]╭─\[\e[0m\]\[\e[1;37;42m\] \u@\h \[\e[0m\] \[\e[1;34m\]\w\[\e[0m\]\[\e[33m\]"#,
+            git_inline!(),
+            r#"\[\e[0m\]\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[36m\]╰─\[\e[1m\]\$\[\e[0m\] '
 "#
         ),
     ),
@@ -64,8 +75,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "gnzh",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[36m\]╭─\[\e[0;32m\]\u\[\e[36m\]@\[\e[1;31m\]\h\[\e[0m\] \[\e[1;34m\]\w\[\e[0m\]\[\e[33m\]$(__sx_git)\[\e[0m\]\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[36m\]╰─➤ \$\[\e[0m\] '
+            r#"export PS1='\[\e[36m\]╭─\[\e[0;32m\]\u\[\e[36m\]@\[\e[1;31m\]\h\[\e[0m\] \[\e[1;34m\]\w\[\e[0m\]\[\e[33m\]"#,
+            git_inline!(),
+            r#"\[\e[0m\]\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[36m\]╰─➤ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -73,8 +87,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "fino",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[38;5;40m\]╭─\u \[\e[38;5;245m\]at \[\e[1;38;5;33m\]\h \[\e[0;38;5;245m\]in \[\e[1;38;5;226m\]\w\[\e[0;35m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[38;5;40m\]╰─○ \$\[\e[0m\] '
+            r#"export PS1='\[\e[38;5;40m\]╭─\u \[\e[38;5;245m\]at \[\e[1;38;5;33m\]\h \[\e[0;38;5;245m\]in \[\e[1;38;5;226m\]\w\[\e[0;35m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[38;5;40m\]╰─○ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -82,8 +99,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "ys",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[1;34m\]#\[\e[0m\] \[\e[36m\]\u \[\e[0m\]@ \[\e[1;32m\]\h \[\e[0m\]in \[\e[1;33m\]\w\[\e[0;33m\]$(__sx_git)\[\e[0m\] [\t]\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1;31m\]\$\[\e[0m\] '
+            r#"export PS1='\[\e[1;34m\]#\[\e[0m\] \[\e[36m\]\u \[\e[0m\]@ \[\e[1;32m\]\h \[\e[0m\]in \[\e[1;33m\]\w\[\e[0;33m\]"#,
+            git_inline!(),
+            r#"\[\e[0m\] [\t]\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1;31m\]\$\[\e[0m\] '
 "#
         ),
     ),
@@ -91,8 +111,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "box",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[36m\]┌─\[\e[90m\](\[\e[36m\]\u\[\e[90m\]@\[\e[1;32m\]\h\[\e[0;90m\])─(\[\e[32m\]\w\[\e[90m\])\[\e[33m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[36m\]└─\[\e[34m\]─(\[\e[33m\]\t\[\e[34m\])─\[\e[36m\]▶ \$\[\e[0m\] '
+            r#"export PS1='\[\e[36m\]┌─\[\e[90m\](\[\e[36m\]\u\[\e[90m\]@\[\e[1;32m\]\h\[\e[0;90m\])─(\[\e[32m\]\w\[\e[90m\])\[\e[33m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[36m\]└─\[\e[34m\]─(\[\e[33m\]\t\[\e[34m\])─\[\e[36m\]▶ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -100,8 +123,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "remote",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[1;97;41m\] ⇄ \h \[\e[0m\] \[\e[36m\]\u\[\e[0m\]:\[\e[1;34m\]\w\[\e[0;33m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1m\]\$\[\e[0m\] '
+            r#"export PS1='\[\e[1;97;41m\] ⇄ \h \[\e[0m\] \[\e[36m\]\u\[\e[0m\]:\[\e[1;34m\]\w\[\e[0;33m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1m\]\$\[\e[0m\] '
 "#
         ),
     ),
@@ -110,8 +136,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "robbyrussell",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[1;97;44m\] \h \[\e[0m\] \[\e[1;36m\]\w\[\e[1;34m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1;32m\]➜ \$\[\e[0m\] '
+            r#"export PS1='\[\e[1;97;44m\] \h \[\e[0m\] \[\e[1;36m\]\w\[\e[1;34m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1;32m\]➜ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -119,8 +148,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "pygmalion",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[38;5;208m\]\u\[\e[0m\]@\[\e[1;33m\]\h \[\e[38;5;111m\]\w\[\e[38;5;245m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1;31m\]» \$\[\e[0m\] '
+            r#"export PS1='\[\e[38;5;208m\]\u\[\e[0m\]@\[\e[1;33m\]\h \[\e[38;5;111m\]\w\[\e[38;5;245m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1;31m\]» \$\[\e[0m\] '
 "#
         ),
     ),
@@ -128,8 +160,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "candy",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[1;32m\]\t\[\e[0m\] \[\e[1;34m\]\u@\h\[\e[0m\] \[\e[1;36m\]\w\[\e[0;33m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1;33m\]❯ \$\[\e[0m\] '
+            r#"export PS1='\[\e[1;32m\]\t\[\e[0m\] \[\e[1;34m\]\u@\h\[\e[0m\] \[\e[1;36m\]\w\[\e[0;33m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1;33m\]❯ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -137,8 +172,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "af-magic",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[38;5;237m\]───\[\e[0m\] \[\e[38;5;32m\]\u\[\e[38;5;237m\]@\[\e[1;38;5;178m\]\h \[\e[0;38;5;41m\]\w\[\e[38;5;245m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[38;5;237m\]\$\[\e[0m\] '
+            r#"export PS1='\[\e[38;5;237m\]───\[\e[0m\] \[\e[38;5;32m\]\u\[\e[38;5;237m\]@\[\e[1;38;5;178m\]\h \[\e[0;38;5;41m\]\w\[\e[38;5;245m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[38;5;237m\]\$\[\e[0m\] '
 "#
         ),
     ),
@@ -146,8 +184,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "lambda",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[1;35m\]\h\[\e[0m\] \[\e[36m\]\w\[\e[33m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1;32m\]λ \$\[\e[0m\] '
+            r#"export PS1='\[\e[1;35m\]\h\[\e[0m\] \[\e[36m\]\w\[\e[33m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1;32m\]λ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -156,8 +197,11 @@ pub const THEMES: &[(&str, &str)] = &[
     (
         "cloud",
         concat!(
-            sx_fns!(),
-            r#"export PS1='\[\e[1;36m\]☁ \[\e[0m\]\[\e[1;38;5;16;48;5;45m\] \h \[\e[0m\] \[\e[1;34m\]\w\[\e[0;33m\]$(__sx_git)\[\e[31m\]$(__sx_rc)\[\e[0m\]\n\[\e[1;36m\]❯ \$\[\e[0m\] '
+            r#"export PS1='\[\e[1;36m\]☁ \[\e[0m\]\[\e[1;38;5;16;48;5;45m\] \h \[\e[0m\] \[\e[1;34m\]\w\[\e[0;33m\]"#,
+            git_inline!(),
+            r#"\[\e[31m\]"#,
+            rc_inline!(),
+            r#"\[\e[0m\]\n\[\e[1;36m\]❯ \$\[\e[0m\] '
 "#
         ),
     ),
@@ -205,24 +249,16 @@ pub fn file_ps1(text: &str) -> Option<String> {
     (!ps1.trim().is_empty()).then(|| ps1.to_string())
 }
 
-/// `export -f` for the helper functions that a prompt script defines. The scripts export `PS1`, so a
-/// shell started from this one (a tmux pane, a nested bash) gets the prompt with its `$(__sx_git)`
-/// calls, and needs the functions too or it prints `command not found` before every prompt.
-pub fn export_helpers(script: &str) -> String {
-    let names: Vec<&str> = ["__sx_git", "__sx_rc"].into_iter().filter(|f| script.contains(&format!("{f}() {{"))).collect();
-    if names.is_empty() { String::new() } else { format!("export -f {}\n", names.join(" ")) }
-}
-
 /// Bash that sets the prompt from a `.prompt` file. A file that already is bash is returned as it
-/// is. A plain PS1 string is single-quoted into `export PS1='...'`, with the git and exit-status
-/// helper functions added when the string calls them.
+/// is. A plain PS1 string is single-quoted into `export PS1='...'`, and `$(__sx_git)` and `$(__sx_rc)`
+/// in it become the inline code for the git branch and the exit status.
 pub fn script_for(text: &str) -> String {
     if is_script(text) {
         return text.to_string();
     }
     let Some(ps1) = file_ps1(text) else { return String::new() };
-    let helpers = if ps1.contains("__sx_git") || ps1.contains("__sx_rc") { SX_FNS } else { "" };
-    format!("{helpers}export PS1='{}'\n", ps1.replace('\'', r"'\''"))
+    let ps1 = ps1.replace("$(__sx_git)", GIT).replace("$(__sx_rc)", RC);
+    format!("export PS1='{}'\n", ps1.replace('\'', r"'\''"))
 }
 
 fn sgr_color(code: u32) -> Option<Color> {
@@ -283,8 +319,8 @@ fn apply_sgr(style: Style, params: &str) -> Style {
 /// Renders a bash PS1 string as styled lines using made-up values: `you@server`, the directory
 /// `~/projects/sx`, the branch `main`, and a last command that failed with status 1.
 pub fn render_ps1(ps1: &str) -> Vec<Line<'static>> {
-    // The helpers print the branch and, after a failed command, " ✗N".
-    let ps1 = ps1.replace("$(__sx_git)", " (main)").replace("$(__sx_rc)", " ✗1");
+    // They print the branch and, after a failed command, " ✗N".
+    let ps1 = ps1.replace(GIT, " (main)").replace(RC, " ✗1").replace("$(__sx_git)", " (main)").replace("$(__sx_rc)", " ✗1");
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut buf = String::new();

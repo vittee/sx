@@ -103,23 +103,11 @@ fn themes_wrap_color_codes_in_brackets_and_use_only_real_newlines_escapes() {
 }
 
 #[test]
-fn helper_functions_used_by_a_theme_are_defined_in_it() {
-    for (name, snippet) in THEMES {
-        let ps1 = extract_ps1(snippet).unwrap();
-        for func in ["__sx_git", "__sx_rc"] {
-            if ps1.contains(&format!("$({func})")) {
-                assert!(snippet.contains(&format!("{func}() {{")), "{name} uses {func} but does not define it");
-            }
-        }
-    }
-}
-
-#[test]
-fn exit_status_helper_keeps_the_status_and_git_helper_restores_it() {
-    // Regression: __sx_git used to leak its own exit status into __sx_rc.
+fn the_inline_status_and_branch_code_keep_the_status_they_were_given() {
+    // Regression: the branch part once leaked its own exit status into the status part.
     let snippet = theme("bira").unwrap();
-    assert!(snippet.contains("return $s;"), "__sx_git must return the status it was given");
-    assert!(snippet.contains("return $c;"), "__sx_rc must return the status it was given");
+    assert!(snippet.contains("exit $s)"), "the branch part must exit with the status it was given");
+    assert!(snippet.contains("exit $c)"), "the status part must exit with the status it was given");
 }
 
 /// Dev aid: `SX_DUMP_THEMES=<dir> cargo test dump_themes -- --ignored` writes each theme as
@@ -163,41 +151,61 @@ fn a_single_quote_in_the_ps1_string_is_escaped() {
 }
 
 #[test]
-fn a_ps1_string_that_calls_the_helpers_gets_them() {
+fn a_ps1_string_that_calls_the_old_helpers_gets_the_inline_code() {
     let s = script_for("\\w$(__sx_git)$(__sx_rc) \\$ ");
-    assert!(s.starts_with("__sx_git() {"), "{s}");
-    assert!(s.contains("__sx_rc() {") && s.ends_with("\\$ '\n"), "{s}");
-    assert!(!script_for("\\w \\$ ").contains("__sx_git"));
+    assert!(s.contains(GIT) && s.contains(RC) && s.ends_with("\\$ '\n"), "{s}");
+    assert!(!s.contains("__sx_"), "{s}");
+    assert_eq!(script_for("\\w \\$ "), "export PS1='\\w \\$ '\n");
 }
 
 #[test]
-fn the_helpers_are_exported_only_when_the_prompt_defines_them() {
-    assert_eq!(export_helpers(&script_for("\\w$(__sx_git)$(__sx_rc) \\$ ")), "export -f __sx_git __sx_rc\n");
-    assert_eq!(export_helpers(theme("git-branch").unwrap()), "export -f __sx_git\n");
-    assert_eq!(export_helpers(theme("minimal").unwrap()), "");
-}
-
-#[test]
-fn a_shell_started_from_the_prompt_shell_still_finds_the_helpers() {
-    // What a tmux pane does: a new interactive bash that inherits the exported PS1.
-    let Ok(bash) = std::process::Command::new("bash").arg("--version").output() else { return };
-    if !bash.status.success() {
-        return;
+fn no_theme_needs_a_function_so_a_new_shell_can_use_the_inherited_prompt() {
+    for (name, text) in THEMES {
+        assert!(!text.contains("__sx_"), "{name} calls or defines a helper function");
+        assert!(!text.contains("() {"), "{name} defines a function");
     }
-    let theme = theme("git-branch").unwrap();
-    let script = format!("{theme}{}\nbash --norc -i -c 'echo \"${{PS1@P}}\"'\n", export_helpers(theme));
+    assert!(THEMES.iter().any(|(_, t)| t.contains(GIT) && t.contains(RC)));
+}
+
+/// Runs a script in a real bash and returns its stdout (without CR) and stderr. `None` when there
+/// is no bash to run.
+fn run_bash(script: &str) -> Option<(String, String)> {
     use std::io::Write;
+    if !std::process::Command::new("bash").arg("--version").output().ok()?.status.success() {
+        return None;
+    }
     let mut child = std::process::Command::new("bash")
         .arg("-s")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .unwrap();
-    child.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
-    let out = child.wait_with_output().unwrap();
-    let err = String::from_utf8_lossy(&out.stderr);
+        .ok()?;
+    child.stdin.take()?.write_all(script.as_bytes()).ok()?;
+    let out = child.wait_with_output().ok()?;
+    Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
+}
+
+#[test]
+fn a_shell_without_any_function_shows_the_branch_and_the_status_from_the_inherited_prompt() {
+    // `sudo -i` and `su` keep the exported PS1 and drop the functions, which `env -i` does too.
+    let script = format!(
+        "{}cd \"$(mktemp -d)\" && git init -q -b trunk . 2>/dev/null\n\
+         false\n\
+         env -i PATH=\"$PATH\" PS1=\"$PS1\" \"$BASH\" --norc -i -c 'echo \"[${{PS1@P}}]\"'\n",
+        theme("robbyrussell").unwrap()
+    );
+    let Some((out, err)) = run_bash(&script) else { return };
     assert!(!err.contains("command not found"), "{err}");
+    assert!(out.contains("(trunk)"), "{out}");
+}
+
+#[test]
+fn the_exit_status_survives_the_branch_part_of_the_prompt() {
+    let script = format!("{}false\necho \"[${{PS1@P}}]\"\n", theme("robbyrussell").unwrap());
+    let Some((out, err)) = run_bash(&script) else { return };
+    assert!(!err.contains("command not found"), "{err}");
+    assert!(out.contains("✗1"), "{out}");
 }
 
 #[test]
