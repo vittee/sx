@@ -422,13 +422,13 @@ fn clicking_in_editor_focuses_and_places_cursor() {
 fn new_snippet_flow_and_validation() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);
-    key(&mut app, KeyCode::Char('n'));
+    ctrl(&mut app, 'n');
     typed(&mut app, "30-git");
     key(&mut app, KeyCode::Enter);
     assert!(app.snippets.contains(&"30-git".to_string()));
     assert_eq!(app.editor_name.as_deref(), Some("30-git"));
     key(&mut app, KeyCode::Esc);
-    key(&mut app, KeyCode::Char('n'));
+    ctrl(&mut app, 'n');
     typed(&mut app, "bad name");
     key(&mut app, KeyCode::Enter);
     assert!(app.status.as_ref().is_some_and(|s| s.1), "{:?}", app.status);
@@ -438,10 +438,10 @@ fn new_snippet_flow_and_validation() {
 fn delete_snippet_needs_confirmation_and_cleans_profiles() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);
-    key(&mut app, KeyCode::Char('d'));
+    ctrl(&mut app, 'd');
     key(&mut app, KeyCode::Char('n')); // cancel
     assert_eq!(app.snippets, ["20-aliases", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
-    key(&mut app, KeyCode::Char('d'));
+    ctrl(&mut app, 'd');
     key(&mut app, KeyCode::Char('y'));
     assert_eq!(app.snippets, ["colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert!(app.cfg.profiles["default"].snippets.is_empty());
@@ -451,7 +451,7 @@ fn delete_snippet_needs_confirmation_and_cleans_profiles() {
 fn duplicate_snippet_prompts_with_a_copy_name_and_copies_the_text() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     assert!(matches!(&app.mode, Mode::Input(InputKind::DuplicateSnippet(f), b) if f == "20-aliases" && b == "20-aliases-copy"));
     assert!(render(&mut app).contains("copy of snippet 20-aliases as: 20-aliases-copy"));
     key(&mut app, KeyCode::Enter);
@@ -473,7 +473,7 @@ fn duplicate_snippet_name_can_be_edited_and_copies_unsaved_edits() {
     typed(&mut app, "# edited\n");
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Esc); // autosave, back to the list
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     for _ in 0.."-copy".len() {
         key(&mut app, KeyCode::Backspace);
     }
@@ -487,17 +487,17 @@ fn duplicate_snippet_name_can_be_edited_and_copies_unsaved_edits() {
 fn duplicate_snippet_rejects_existing_or_invalid_names_and_can_be_cancelled() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     for _ in 0.."-copy".len() {
         key(&mut app, KeyCode::Backspace);
     }
     key(&mut app, KeyCode::Enter); // same name as the source
     assert!(app.status.as_ref().is_some_and(|s| s.1), "{:?}", app.status);
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     typed(&mut app, " bad");
     key(&mut app, KeyCode::Enter);
     assert!(app.status.as_ref().is_some_and(|s| s.1), "{:?}", app.status);
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.snippets, ["20-aliases", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert!(matches!(app.mode, Mode::Normal));
@@ -507,7 +507,7 @@ fn duplicate_snippet_rejects_existing_or_invalid_names_and_can_be_cancelled() {
 fn duplicate_profile_copies_snippets_and_prompt_and_selects_the_copy() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     assert!(matches!(&app.mode, Mode::Input(InputKind::DuplicateProfile(f), b) if f == "default" && b == "default-copy"));
     key(&mut app, KeyCode::Enter);
     assert_eq!(app.cfg.profiles["default-copy"], app.cfg.profiles["default"]);
@@ -522,7 +522,7 @@ fn duplicate_profile_copies_snippets_and_prompt_and_selects_the_copy() {
 fn duplicate_profile_rejects_existing_name() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
-    key(&mut app, KeyCode::Char('c'));
+    ctrl(&mut app, 'y');
     for _ in 0.."-copy".len() {
         key(&mut app, KeyCode::Backspace);
     }
@@ -624,7 +624,7 @@ fn clicking_a_theme_picks_it_and_wheel_moves_it() {
 fn each_profile_keeps_its_own_prompt() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
-    key(&mut app, KeyCode::Char('n'));
+    ctrl(&mut app, 'n');
     typed(&mut app, "work");
     key(&mut app, KeyCode::Enter); // selects the new profile, which has no prompt yet
     assert_eq!(prompt_of(&app, "work"), None);
@@ -670,14 +670,14 @@ fn focus_moves_between_panes_with_left_right_esc() {
 fn profile_create_default_delete() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
-    key(&mut app, KeyCode::Char('n'));
+    ctrl(&mut app, 'n');
     typed(&mut app, "work");
     key(&mut app, KeyCode::Enter);
     assert!(app.cfg.profiles.contains_key("work"));
-    key(&mut app, KeyCode::Char('*'));
+    ctrl(&mut app, 'g');
     assert_eq!(app.cfg.default_profile, "work");
     assert!(render(&mut app).contains("work *"));
-    key(&mut app, KeyCode::Char('d'));
+    ctrl(&mut app, 'd');
     key(&mut app, KeyCode::Char('y'));
     assert!(!app.cfg.profiles.contains_key("work"));
     assert_eq!(app.cfg.default_profile, "default");
@@ -758,7 +758,7 @@ fn f2_works_in_every_tab_and_while_typing() {
         assert!(app.mouse, "{tab:?}");
     }
     app.switch_tab(Tab::Snippets);
-    key(&mut app, KeyCode::Char('n'));
+    ctrl(&mut app, 'n');
     key(&mut app, KeyCode::F(2));
     assert!(!app.mouse);
     assert!(matches!(app.mode, Mode::Input(..)), "typing is not interrupted");
@@ -864,7 +864,7 @@ fn e_copies_a_builtin_theme_and_opens_it_in_the_editor() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
     key(&mut app, KeyCode::Right); // prompt list, "fino" is selected
-    key(&mut app, KeyCode::Char('e'));
+    ctrl(&mut app, 'e');
     assert_eq!(app.tab, Tab::Snippets);
     assert!(app.editor_focus);
     assert_eq!(app.editor_name.as_deref(), Some("fino.prompt"));
@@ -880,7 +880,7 @@ fn e_copies_a_builtin_theme_and_opens_it_in_the_editor() {
     app.switch_tab(Tab::Profiles);
     key(&mut app, KeyCode::Right);
     app.set_prompt_index(app.theme_names().iter().position(|n| n == "fino").unwrap() + 1);
-    key(&mut app, KeyCode::Char('e'));
+    ctrl(&mut app, 'e');
     assert_eq!(app.editor_name.as_deref(), Some("fino-2.prompt"));
     assert!(config::read_snippet(&app.dir, "fino.prompt").unwrap().starts_with("mine "));
 }
@@ -891,7 +891,7 @@ fn e_with_the_servers_own_prompt_starts_a_new_theme_from_the_default() {
     app.switch_tab(Tab::Profiles);
     key(&mut app, KeyCode::Right);
     app.set_prompt_index(0);
-    key(&mut app, KeyCode::Char('e'));
+    ctrl(&mut app, 'e');
     assert_eq!(app.editor_name.as_deref(), Some("my-prompt.prompt"));
     let ps1 = prompt::extract_ps1(prompt::theme(prompt::DEFAULT_THEME).unwrap()).unwrap();
     assert_eq!(config::read_snippet(&app.dir, "my-prompt.prompt").unwrap(), format!("{ps1}\n"));
@@ -1845,4 +1845,19 @@ fn the_pick_hint_lights_up_only_when_the_host_has_named_options() {
     key(&mut app, KeyCode::Down);
     assert!(!app.can_pick_options());
     assert!(!bold_at(&mut app, "^L"));
+}
+
+#[test]
+fn the_list_pages_use_ctrl_keys_and_plain_letters_do_nothing() {
+    let (_tmp, mut app) = app();
+    for tab in [Tab::Snippets, Tab::Profiles] {
+        app.switch_tab(tab);
+        for c in ['n', 'c', 'd', 'r', 'e', 'y', '*'] {
+            key(&mut app, KeyCode::Char(c));
+            assert!(matches!(app.mode, Mode::Normal), "plain {c} must not act on {tab:?}");
+        }
+        ctrl(&mut app, 'n');
+        assert!(matches!(app.mode, Mode::Input(..)), "Ctrl-N creates on {tab:?}");
+        key(&mut app, KeyCode::Esc);
+    }
 }

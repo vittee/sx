@@ -71,14 +71,14 @@ impl App {
             (_, Tab::Snippets) => &[
                 ("Up/Down", "choose"),
                 ("Enter", "edit"),
-                ("n", "new"),
-                ("c", "copy"),
-                ("d", "delete"),
+                ("^N", "new"),
+                ("^Y", "copy"),
+                ("^D", "delete"),
                 ("Tab", "next"),
-                ("q", "quit"),
+                ("Esc", "quit"),
             ],
             (_, Tab::Profiles) if self.prof_focus == ProfFocus::Prompt => {
-                &[("Up/Down", "choose prompt"), ("e", "edit"), ("→", "snippets"), ("←", "back")]
+                &[("Up/Down", "choose prompt"), ("^E", "edit"), ("→", "snippets"), ("←", "back")]
             }
             (_, Tab::Profiles) if self.prof_focus == ProfFocus::Snippets => {
                 &[("Arrows", "choose"), ("Space", "toggle"), ("Esc", "back")]
@@ -86,12 +86,12 @@ impl App {
             (_, Tab::Profiles) => &[
                 ("Up/Down", "choose"),
                 ("→", "prompt & snippets"),
-                ("n", "new"),
-                ("c", "copy"),
-                ("d", "delete"),
-                ("*", "default"),
+                ("^N", "new"),
+                ("^Y", "copy"),
+                ("^D", "delete"),
+                ("^G", "default"),
                 ("Tab", "next"),
-                ("q", "quit"),
+                ("Esc", "quit"),
             ],
         };
         let key_style = Style::new().add_modifier(Modifier::BOLD);

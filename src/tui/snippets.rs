@@ -163,18 +163,18 @@ impl App {
                 }
             }
             KeyCode::Enter | KeyCode::Right if self.editor_name.is_some() => self.editor_focus = true,
-            KeyCode::Char('n') => self.mode = Mode::Input(InputKind::NewSnippet, String::new()),
-            KeyCode::Char('c') => {
+            KeyCode::Char('n') if ctrl => self.mode = Mode::Input(InputKind::NewSnippet, String::new()),
+            KeyCode::Char('y') if ctrl => {
                 if let Some(name) = self.selected_snippet() {
                     self.mode = Mode::Input(InputKind::DuplicateSnippet(name.clone()), format!("{name}-copy"));
                 }
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char('d') if ctrl => {
                 if let Some(name) = self.selected_snippet() {
                     self.mode = Mode::Confirm(Pending::DeleteSnippet(name));
                 }
             }
-            KeyCode::Char('q') | KeyCode::Esc => {
+            KeyCode::Esc => {
                 self.flush_editor();
                 self.quit = true;
             }
@@ -261,7 +261,7 @@ impl App {
         let title = match &self.editor_name {
             Some(n) if self.editor.dirty => format!(" {} (modified) ", config::snippet_file(n)),
             Some(n) => format!(" {} ", config::snippet_file(n)),
-            None => " no snippet: press n to create one ".to_string(),
+            None => " no snippet: press Ctrl-N to create one ".to_string(),
         };
         let border = if self.editor_focus { Color::Cyan } else { Color::Reset };
         let block = Block::bordered().title(title).border_style(Style::new().fg(border));

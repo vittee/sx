@@ -143,6 +143,7 @@ impl App {
     }
 
     pub(super) fn on_key_profiles(&mut self, k: KeyEvent) {
+        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         match self.prof_focus {
             ProfFocus::Snippets => {
                 let len = self.grid_items().len();
@@ -167,7 +168,7 @@ impl App {
                 match k.code {
                     KeyCode::Up => self.move_prompt(-1),
                     KeyCode::Down => self.move_prompt(1),
-                    KeyCode::Char('e') => self.edit_prompt(),
+                    KeyCode::Char('e') if ctrl => self.edit_prompt(),
                     KeyCode::Right | KeyCode::Enter if !self.grid_items().is_empty() => {
                         self.prof_focus = ProfFocus::Snippets;
                     }
@@ -186,25 +187,25 @@ impl App {
             KeyCode::Up => Self::move_sel(&mut self.prof_state, len, -1),
             KeyCode::Down => Self::move_sel(&mut self.prof_state, len, 1),
             KeyCode::Right | KeyCode::Enter => self.prof_focus = ProfFocus::Prompt,
-            KeyCode::Char('n') => self.mode = Mode::Input(InputKind::NewProfile, String::new()),
-            KeyCode::Char('c') => {
+            KeyCode::Char('n') if ctrl => self.mode = Mode::Input(InputKind::NewProfile, String::new()),
+            KeyCode::Char('y') if ctrl => {
                 if let Some(p) = self.selected_profile() {
                     self.mode = Mode::Input(InputKind::DuplicateProfile(p.clone()), format!("{p}-copy"));
                 }
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char('d') if ctrl => {
                 if let Some(p) = self.selected_profile() {
                     self.mode = Mode::Confirm(Pending::DeleteProfile(p));
                 }
             }
-            KeyCode::Char('*') => {
+            KeyCode::Char('g') if ctrl => {
                 if let Some(p) = self.selected_profile() {
                     self.cfg.default_profile = p.clone();
                     self.save_cfg();
                     self.say(format!("{p} is now the default profile"));
                 }
             }
-            KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
+            KeyCode::Esc => self.quit = true,
             _ => {}
         }
     }

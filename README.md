@@ -115,9 +115,9 @@ Edit your rc pieces in place.
 #### Keys
 - `Esc` autosaves
 - `Ctrl-S` saves.
-- `n` creates a snippet
-- `c` copy
-- `d` delete
+- `Ctrl-N` creates a snippet
+- `Ctrl-Y` copy
+- `Ctrl-D` delete
 
 A snippet that sets `PS1`, and every `.prompt` snippet, gets a prompt preview underneath.<br>
 The file name decides what a snippet is (see [Snippet kinds](#snippet-kinds)).
@@ -129,10 +129,11 @@ For the prompt, pick a built-in theme, one of your own, or "(server's own)"
 to keep the server's prompt.
 
 #### Keys
-- `n` creates a profile
-- `c` copy
-- `d` delete
-- `*` makes it the default
+- `Ctrl-N` creates a profile
+- `Ctrl-Y` copy
+- `Ctrl-D` delete
+- `Ctrl-G` makes it the default
+- `Ctrl-E` edits the selected prompt theme
 
 ## Configurations
 
@@ -207,7 +208,7 @@ A `.prompt` file contains only the `PS1` string, for example `\[\e[32m\]\u@\h\[\
 `sx` puts it in quotes as `export PS1='...'`, and the preview draws it unchanged.
 
 
-To change a built-in theme, press `e` on it in Profiles.<br>
+To change a built-in theme, press `Ctrl-E` on it in Profiles.<br>
 You get the plain string to edit.
 
 Eleven built-in themes are based on [oh-my-zsh](https://ohmyz.sh/) themes:<br>
