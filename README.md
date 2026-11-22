@@ -245,6 +245,14 @@ A prompt theme replaces the server's own `PS1`, which is where many servers set 
 so `sx` does it itself.<br>
 Inside tmux, add `set -g set-titles on` to your tmux config to pass it on to your terminal.
 
+### Prompt marks
+
+The server also marks where each prompt, command and output starts and ends.<br>
+A terminal that understands the marks can jump from one prompt to the next, select the output of one command,
+and show failed commands.<br>
+
+The output and exit status marks need bash 4.4 or newer.
+
 ## How it works
 
 `sx` runs `ssh` with two extra options:

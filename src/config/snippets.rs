@@ -139,9 +139,18 @@ printf '\\033]52;c;%s\\a' \"$(printf %s \"$d\" | tr -d '\\n')\" >/dev/tty; }\n";
 /// and a server's own `PS1` usually sets a title of its own, which would win from anywhere earlier.
 /// The code sits inside `PS1` as a command substitution, not in a function, so it also runs in a
 /// shell that did not inherit one, such as the one `sudo -i` starts.
+///
+/// The same hooks mark the prompt for the terminal (OSC 133, "semantic prompt"): `A` starts the
+/// prompt, at the front of `PS1`, `B` ends it, after the title, `C` starts the command's output
+/// (`PS0`, bash 4.4 or newer), and `D;status` ends the command, sent before the next prompt except
+/// the first. A terminal that knows them can jump between prompts, select one command's output and
+/// mark failed commands. `__sx_ps1` adds the marks to `PS1`, once, also after `sx-theme` replaced it.
+/// `__sx_title` (in `PROMPT_COMMAND`) sends `D`, calls `__sx_ps1`, and returns the status it got so
+/// `$?` is intact.
 const TITLE: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$HOME"}";; esac;printf "\033]0;[sx] %s@%s: %s\a" "${USER:-$(id -un)}" "${HOSTNAME%%.*}" "$d"'
-__sx_ps1() { case $PS1 in *'033]0;[sx] '*) ;; *) PS1="$PS1\[\$($__sx_tc)\]";; esac; }
-__sx_title() { local s=$?; __sx_ps1; return $s; }
+__sx_ps1() { case $PS1 in *'133;A'*) ;; *) PS1='\[\e]133;A\a\]'$PS1;; esac; case $PS1 in *'133;B'*) ;; *) PS1="$PS1\[\$($__sx_tc)\]\[\e]133;B\a\]";; esac; }
+__sx_title() { local s=$?; [ -n "$__sx_seen" ] && printf '\033]133;D;%s\a' "$s"; __sx_seen=1; __sx_ps1; return $s; }
+case ${PS0-} in *'133;C'*) ;; *) PS0=${PS0-}'\e]133;C\a';; esac
 case $PROMPT_COMMAND in *__sx_title*) ;; *) PROMPT_COMMAND="__sx_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
 "##;
 

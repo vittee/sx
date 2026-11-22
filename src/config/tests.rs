@@ -459,8 +459,18 @@ fn the_title_hook_is_sent_last_and_only_once() {
     assert!(rc.contains(r"\033]0;[sx] %s@%s: %s\a"), "{rc}");
     assert!(rc.find("# --- title ---").unwrap() > rc.find("# --- prompt: ").unwrap(), "{rc}");
     assert!(rc.contains("return $s; }"), "the hook must keep $?: {rc}");
-    assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]""#), "the title goes last in PS1: {rc}");
+    assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]\[\e]133;B\a\]""#), "the title goes last in PS1: {rc}");
     assert!(!rc.contains("__sx_t()") && !rc.contains("export -f"), "no function: sudo -i drops them: {rc}");
+}
+
+#[test]
+fn the_prompt_is_marked_with_osc_133() {
+    let (tmp, cfg) = setup();
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains(r"PS1='\[\e]133;A\a\]'$PS1"), "A starts the prompt: {rc}");
+    assert!(rc.contains(r"\[\e]133;B\a\]"), "B ends it: {rc}");
+    assert!(rc.contains(r"PS0=${PS0-}'\e]133;C\a'"), "C starts the output: {rc}");
+    assert!(rc.contains(r"\033]133;D;%s\a"), "D ends the command: {rc}");
 }
 
 #[test]
