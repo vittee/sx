@@ -141,8 +141,14 @@ printf '\\033]52;c;%s\\a' \"$(printf %s \"$d\" | tr -d '\\n')\" >/dev/tty; }\n";
 /// terminal, which `tmux` needs (its server cannot open the name `/dev/tty`).
 const SUDO: &str = "sx-sudo() { case ${1-} in -h|--help) printf '%s\\n' 'usage: sx-sudo [user]' 'Starts a shell for [user] (root by default) with your prompt and aliases,' 'like sudo -i. It works only in a shell that sx started.'; return;; \
 -*) echo \"sx-sudo: unknown option $1, see sx-sudo --help\" >&2; return 1;; esac; local u=${1:-root}; [ -n \"${__sx_payload-}\" ] || { echo 'sx-sudo: this shell was not started by sx' >&2; return 1; }; \
-printf %s \"$__sx_payload\" | sudo -H -u \"$u\" bash -c 'P=$(cat); export SX_RC=$P; cd ~ 2>/dev/null; \
+printf '%s\\n%s\\n' \"$__sx_payload\" \"${__sx_theme_cur-}\" | sudo -H -u \"$u\" bash -c 'read -r P; read -r T; export SX_RC=$P SX_THEME=$T; cd ~ 2>/dev/null; \
 exec bash --rcfile <(printf %s \"$P\" | base64 -d | gunzip) -i <&1'; }\n";
+
+/// The shell that `sx-sudo` starts gets the theme you chose with `sx-theme` in `SX_THEME`, and the
+/// rc applies it last, since the payload only holds the theme of the profile. Without `sx-theme`
+/// there is nothing to apply, and a name the rc does not know is ignored.
+const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
+[ -n \"$__sx_t0\" ] && command -v sx-theme >/dev/null && sx-theme \"$__sx_t0\" 2>/dev/null; unset __sx_t0\n";
 
 /// Sets the window and tab title of your terminal (OSC 0) to `[sx] user@host: dir` at every prompt,
 /// so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence. It is added to the
@@ -260,7 +266,7 @@ sx-theme() {
   esac
   local t
   t=$(__sx_theme_text "$1") || { echo "sx-theme: no theme named $1" >&2; return 1; }
-  eval "$t"; __sx_ps1
+  eval "$t"; __sx_ps1; __sx_theme_cur=$1
 }
 alias sxt=sx-theme
 complete -W '@LIST@' sx-theme sxt
@@ -334,5 +340,8 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
         out.push_str(&theme_switcher(dir));
     }
     push_block(&mut out, "title", TITLE);
+    if out.contains("# --- sx-theme ---") {
+        push_block(&mut out, "theme from sx-sudo", RESTORE_THEME);
+    }
     out
 }

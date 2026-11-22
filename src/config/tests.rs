@@ -477,7 +477,7 @@ fn the_title_hook_is_sent_last_and_only_once() {
     assert!(rc.contains("return $s; }"), "the hook must keep $?: {rc}");
     assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]\[\e]133;B\a\]""#), "the title goes last in PS1: {rc}");
     assert!(!rc.contains("__sx_t()") && !rc.contains("export -f"), "no function: sudo -i drops them: {rc}");
-    assert!(rc.contains("eval \"$t\"; __sx_ps1\n}"), "sx-theme re-adds it and remembers the name: {rc}");
+    assert!(rc.contains("eval \"$t\"; __sx_ps1; __sx_theme_cur=$1\n}"), "sx-theme re-adds it and remembers the name: {rc}");
     assert!(rc.contains("'') __sx_theme_show; return;;") && rc.contains("-l|--list)"), "{rc}");
 }
 
@@ -530,13 +530,18 @@ fn sx_sudo_is_always_sent_and_passes_the_payload_on_stdin_not_in_the_arguments()
     let block = &rc[at..];
     assert!(block.contains("sx-sudo() {"), "{block}");
     // sudo logs its arguments, so the payload goes through a pipe
-    assert!(block.contains("printf %s \"$__sx_payload\" | sudo -H -u \"$u\" bash -c"), "{block}");
+    assert!(block.contains("printf '%s\\n%s\\n' \"$__sx_payload\" \"${__sx_theme_cur-}\" | sudo -H -u \"$u\" bash -c"), "{block}");
     assert!(block.contains("-i <&1'") && !block.contains("</dev/tty"), "tmux needs the real tty name: {block}");
 }
 
 /// Runs `script` in an interactive bash that has loaded the rc of the default profile with a prompt
 /// theme, as the server does. `None` when there is no bash. Returns stdout and stderr.
 fn run_in_rc(script: &str) -> Option<(String, String)> {
+    run_in_rc_after("", script)
+}
+
+/// [`run_in_rc`] with `before` run first, for example to set an environment variable the rc reads.
+fn run_in_rc_after(before: &str, script: &str) -> Option<(String, String)> {
     use std::io::Write;
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", Some("fino"));
@@ -551,7 +556,7 @@ fn run_in_rc(script: &str) -> Option<(String, String)> {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .ok()?;
-    child.stdin.take()?.write_all(format!("{rc}\n{script}").as_bytes()).ok()?;
+    child.stdin.take()?.write_all(format!("{before}\n{rc}\n{script}").as_bytes()).ok()?;
     let out = child.wait_with_output().ok()?;
     Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
 }
@@ -598,4 +603,21 @@ fn the_theme_preview_still_shows_a_demo_branch_and_status() {
     assert!(out.contains("(main)") && out.contains("✗1"), "{out}");
     // made-up names, so a long real hostname cannot break the boxes
     assert!(out.contains("you") && out.contains("server") && out.contains("~/app"), "{out}");
+}
+
+#[test]
+fn the_theme_chosen_with_sx_theme_is_remembered_and_carried_into_the_sx_sudo_shell() {
+    // what sx-sudo passes: the name in SX_THEME, set before the rc of the new shell runs
+    let Some((out, err)) = run_in_rc("sx-theme\nsx-theme minimal\necho \"cur=$__sx_theme_cur\"\n") else { return };
+    assert!(!err.contains("command not found"), "{err}");
+    assert!(out.contains("cur=minimal"), "{out}");
+
+    let Some((out, _)) = run_in_rc_after("export SX_THEME=minimal", "echo \"ps1=[$PS1]\"\necho \"left=${SX_THEME-unset}\"\n") else { return };
+    assert!(out.contains(r"ps1=[\u@\h:\w\$ ") || out.contains(r"ps1=[\[\e]133;A"), "{out}");
+    assert!(out.contains("left=unset"), "the variable does not leak to commands: {out}");
+    assert!(!out.contains("0;35m"), "the profile's own theme (fino) is replaced: {out}");
+
+    // an unknown name changes nothing and prints nothing
+    let Some((out, err)) = run_in_rc_after("export SX_THEME=nope", "echo \"left=${SX_THEME-unset}\"\n") else { return };
+    assert!(out.contains("left=unset") && !err.contains("no theme"), "{out}{err}");
 }
