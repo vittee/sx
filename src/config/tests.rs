@@ -45,7 +45,7 @@ fn prompt_theme_is_appended_after_snippets() {
     cfg.set_prompt("default", Some("minimal"));
     let rc = build_rc(tmp.path(), &cfg, "default");
     let theme = prompt::theme("minimal").unwrap();
-    let rc = rc.split("# --- title ---").next().unwrap();
+    let rc = rc.split("# --- sx-theme ---").next().unwrap();
     assert!(rc.ends_with(&format!("# --- prompt: minimal ---\n{theme}")), "{rc}");
     assert!(rc.find("mine> ").unwrap() < rc.find("# --- prompt: minimal").unwrap());
 }
@@ -190,7 +190,7 @@ fn user_prompt_themes_are_used_and_a_missing_one_is_ignored() {
     cfg.toggle_snippet("default", "mine.prompt"); // never sent as a snippet
     cfg.set_prompt("default", Some("mine.prompt"));
     let rc = build_rc(tmp.path(), &cfg, "default");
-    let rc = rc.split("# --- title ---").next().unwrap();
+    let rc = rc.split("# --- sx-theme ---").next().unwrap();
     assert!(rc.ends_with("# --- prompt: mine.prompt ---\nexport PS1='mine\\h> '\n"), "{rc}");
     assert_eq!(rc.matches("export PS1").count(), 1, "sent once, as the theme: {rc}");
     assert!(!rc.contains("# --- mine.prompt ---"), "not sent as a snippet: {rc}");
@@ -308,7 +308,7 @@ fn a_prompt_snippet_with_only_the_ps1_string_is_wrapped_for_the_server() {
     write_snippet(tmp.path(), "mine.prompt", "\\u@\\h\\$ \n").unwrap();
     cfg.set_prompt("default", Some("mine.prompt"));
     let rc = build_rc(tmp.path(), &cfg, "default");
-    let rc = rc.split("# --- title ---").next().unwrap();
+    let rc = rc.split("# --- sx-theme ---").next().unwrap();
     assert!(rc.ends_with("# --- prompt: mine.prompt ---\nexport PS1='\\u@\\h\\$ '\n"), "{rc}");
     assert_eq!(theme_ps1(tmp.path(), "mine.prompt").as_deref(), Some("\\u@\\h\\$ "));
     assert_eq!(theme_ps1(tmp.path(), "minimal").as_deref(), Some("\\u@\\h:\\w\\$ "));
@@ -443,6 +443,22 @@ fn named_option_sets_round_trip_and_old_configs_still_load() {
 }
 
 #[test]
+fn sx_theme_switches_between_the_built_in_and_your_own_themes() {
+    let (tmp, mut cfg) = setup();
+    write_snippet(tmp.path(), "mine.prompt", "export PS1='mine> '\n").unwrap();
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains("sx-theme() {"), "{rc}");
+    for (name, _) in prompt::THEMES {
+        assert!(rc.contains(&format!("'{name}') cat <<")), "{name}");
+    }
+    assert!(rc.contains("'mine.prompt') cat <<"), "{rc}");
+    assert!(rc.contains("complete -W '") && rc.contains("mine.prompt' sx-theme sxt"), "{rc}");
+    assert!(rc.contains("alias sxt=sx-theme\n"), "{rc}");
+    cfg.set_prompt("default", None);
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("sx-theme"), "no theme, no switcher");
+}
+
+#[test]
 fn clip_is_always_sent_and_writes_osc_52_to_the_terminal() {
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", None);
@@ -461,6 +477,15 @@ fn the_title_hook_is_sent_last_and_only_once() {
     assert!(rc.contains("return $s; }"), "the hook must keep $?: {rc}");
     assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]\[\e]133;B\a\]""#), "the title goes last in PS1: {rc}");
     assert!(!rc.contains("__sx_t()") && !rc.contains("export -f"), "no function: sudo -i drops them: {rc}");
+    assert!(rc.contains("eval \"$t\"; __sx_ps1\n}"), "sx-theme re-adds it and remembers the name: {rc}");
+    assert!(rc.contains("'') __sx_theme_show; return;;") && rc.contains("-l|--list)"), "{rc}");
+}
+
+#[test]
+fn the_theme_preview_drops_the_carriage_return_bash_puts_in_a_prompt_newline() {
+    let (tmp, cfg) = setup();
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains(r"p=${p//[$'\001\002\r']/}"), "{rc}");
 }
 
 #[test]
@@ -526,4 +551,14 @@ fn the_title_runs_inside_ps1_with_no_function_and_keeps_the_status() {
     let Some((out, err)) = run_in_rc(script) else { return };
     assert!(out.contains("TITLE_OK") && !out.contains("TITLE_MISSING"), "{out}");
     assert!(!err.contains("command not found"), "{err}");
+}
+
+#[test]
+fn the_theme_preview_still_shows_a_demo_branch_and_status() {
+    let Some((out, err)) = run_in_rc("sx-theme
+") else { return };
+    assert!(!err.contains("command not found"), "{err}");
+    assert!(out.contains("(main)") && out.contains("✗1"), "{out}");
+    // made-up names, so a long real hostname cannot break the boxes
+    assert!(out.contains("you") && out.contains("server") && out.contains("~/app"), "{out}");
 }

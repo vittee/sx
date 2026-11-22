@@ -14,7 +14,7 @@ fn extracts_quoted_values() {
 #[test]
 fn renders_text_and_newlines() {
     let lines = render_ps1("\\u@\\h:\\w\\$ ");
-    assert_eq!(text(&lines), ["you@server:~/projects/sx$ "]);
+    assert_eq!(text(&lines), ["you@server:~/app$ "]);
     let two = render_ps1("\\u\\n> ");
     assert_eq!(text(&two), ["you", "> "]);
 }
@@ -219,7 +219,7 @@ fn a_prompt_file_that_is_bash_is_used_as_it_is() {
 #[test]
 fn the_preview_shows_a_directory_a_branch_and_a_failed_command() {
     let shown = text(&render_ps1(r"\W $(__sx_git)$(__sx_rc)"));
-    assert_eq!(shown, ["sx  (main) ✗1"]);
+    assert_eq!(shown, ["app  (main) ✗1"]);
 }
 
 #[test]

@@ -19,8 +19,8 @@ macro_rules! rc_inline {
     };
 }
 
-const GIT: &str = git_inline!();
-const RC: &str = rc_inline!();
+pub const GIT: &str = git_inline!();
+pub const RC: &str = rc_inline!();
 
 /// Built-in prompt themes: (name, snippet text).
 ///
@@ -317,7 +317,7 @@ fn apply_sgr(style: Style, params: &str) -> Style {
 }
 
 /// Renders a bash PS1 string as styled lines using made-up values: `you@server`, the directory
-/// `~/projects/sx`, the branch `main`, and a last command that failed with status 1.
+/// `~/app`, the branch `main`, and a last command that failed with status 1.
 pub fn render_ps1(ps1: &str) -> Vec<Line<'static>> {
     // They print the branch and, after a failed command, " ✗N".
     let ps1 = ps1.replace(GIT, " (main)").replace(RC, " ✗1").replace("$(__sx_git)", " (main)").replace("$(__sx_rc)", " ✗1");
@@ -346,8 +346,8 @@ pub fn render_ps1(ps1: &str) -> Vec<Line<'static>> {
         match c {
             'u' => buf.push_str("you"),
             'h' | 'H' => buf.push_str("server"),
-            'w' => buf.push_str("~/projects/sx"),
-            'W' => buf.push_str("sx"),
+            'w' => buf.push_str("~/app"),
+            'W' => buf.push_str("app"),
             '$' => buf.push('$'),
             't' => buf.push_str("12:00:00"),
             'A' => buf.push_str("12:00"),

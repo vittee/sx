@@ -221,6 +221,15 @@ Every built-in theme ends in `$`, or `#` for root.
 A `.prompt` file with a `PS1=` line is used as bash, unchanged, so any other lines in it run.<br>
 Put anything else you want on the server in a normal `.sh` snippet.
 
+To try another theme without reconnecting, run `sx-theme <name>` on the server.<br>
+`sx-theme` alone previews every theme in a small box, as many per row as the terminal is wide,<br>
+with a made-up user, host and directory, a git branch and a failed command, so you can compare them.<br>
+The preview needs bash 4.4 or newer and a UTF-8 locale. Without them it prints the names.<br>
+`sx-theme -l` lists the names, and Tab completes them.<br>
+`sxt` is a short alias for it.<br>
+`--help` prints the usage of `sx-theme`.<br>
+It lasts until you exit, and the profile's theme is used again on the next connection.
+
 ### Copy to your clipboard
 
 `clip` on the server puts text in the clipboard of the machine you are sitting at.<br>

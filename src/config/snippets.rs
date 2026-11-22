@@ -154,6 +154,107 @@ case ${PS0-} in *'133;C'*) ;; *) PS0=${PS0-}'\e]133;C\a';; esac
 case $PROMPT_COMMAND in *__sx_title*) ;; *) PROMPT_COMMAND="__sx_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
 "##;
 
+/// Bash that defines `sx-theme`, which switches the prompt in a running session. `sx-theme` lists
+/// previews them, `sx-theme -l` lists the names and `sx-theme <name>` applies one. `sxt` is an
+/// alias for it. The built-in themes and your `.prompt` snippets are both in it, since the rc is sent once and the server has nothing to fetch them from later.
+fn theme_switcher(dir: &Path) -> String {
+    let mut names: Vec<String> = prompt::THEMES.iter().map(|(n, _)| n.to_string()).collect();
+    names.extend(list_snippets(dir).into_iter().filter(|n| is_prompt_snippet(n)));
+    names.retain(|n| !n.contains(['\'', ' ']));
+    let mut out = String::from("__sx_theme_text() { case $1 in\n");
+    let mut listed = Vec::new();
+    for (i, name) in names.iter().enumerate() {
+        let Some(text) = theme_text(dir, name) else { continue };
+        let tag = heredoc_tag(&format!("THEME{i}"), &text);
+        let nl = if text.ends_with('\n') { "" } else { "\n" };
+        out.push_str(&format!("'{name}') cat <<'{tag}'\n{text}{nl}{tag}\n;;\n"));
+        listed.push(name.as_str());
+    }
+    out.push_str("*) return 1;; esac; }\n");
+    out.push_str(&SWITCHER.replace("@LIST@", &listed.join(" ")).replace("@GIT@", prompt::GIT).replace("@RC@", prompt::RC));
+    out
+}
+
+/// The commands around the theme texts. `sx-theme` alone previews every theme: each one is run in a
+/// subshell and its `PS1` is expanded with `${PS1@P}` (bash 4.4 or newer), so the preview shows the
+/// real host, directory and git branch. Older bash gets the names only. The `\001` and `\002` that
+/// `\[` and `\]` leave in the expanded text are removed, and so is the CR: an interactive bash
+/// expands the `\n` of a prompt to CR LF, and a CR inside a box would send the cursor back to the
+/// first column.
+const SWITCHER: &str = r#"__sx_strip() { local s=$1 o=; while [[ $s == *$'\e['* ]]; do o+=${s%%$'\e['*}; s=${s#*$'\e['}; s=${s#*m}; done; REPLY=$o$s; }
+__sx_theme_show() {
+  local n p l r i j ci cols g d row pad nw=0 mw=0 H=1 gap=2 iw G='@GIT@' R='@RC@' W='~/app'
+  local -a names=() lines=()
+  local dim=$'\e[90m' bold=$'\e[1m' off=$'\e[0m'
+  if ! (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )) || [[ ${LC_ALL:-${LC_CTYPE:-$LANG}} != *[Uu][Tt][Ff]*8* ]]; then
+    echo '@LIST@'; return
+  fi
+  for n in @LIST@; do
+    p=$( cd ~ 2>/dev/null; eval "$(__sx_theme_text "$n")"; PS1=${PS1//"$G"/ (main)}; PS1=${PS1//"$R"/ ✗1}; PS1=${PS1//\\u/you}; PS1=${PS1//\\[hH]/server}; PS1=${PS1//\\w/$W}; PS1=${PS1//\\W/app}; printf %s "${PS1@P}" )
+    p=${p//[$'\001\002\r']/}
+    names+=("$n"); ci=$(( ${#names[@]} - 1 )); (( ${#n} > nw )) && nw=${#n}
+    r=0
+    while IFS= read -r l; do
+      if (( r < 4 )); then
+        lines[ci * 4 + r]=$l; __sx_strip "$l"; (( ${#REPLY} > mw )) && mw=${#REPLY}
+        (( r + 1 > H )) && H=$(( r + 1 ))
+      fi
+      r=$(( r + 1 ))
+    done <<<"$p"
+  done
+  iw=$(( mw + 2 )); (( nw + 3 > iw )) && iw=$(( nw + 3 ))
+  cols=${COLUMNS:-$(tput cols 2>/dev/null)}; cols=$(( (${cols:-80} + gap) / (iw + 2 + gap) ))
+  (( cols < 1 )) && cols=1; (( cols > ${#names[@]} )) && cols=${#names[@]}
+  printf -v g '%*s' "$gap" ''
+  for (( i = 0; i < ${#names[@]}; i += cols )); do
+    row=
+    for (( j = i; j < i + cols && j < ${#names[@]}; j++ )); do
+      n=${names[j]}; printf -v d '%*s' $(( iw - ${#n} - 3 )) ''; d=${d// /─}
+      [[ -n $row ]] && row+=$g
+      row+="${dim}┌─ ${off}${bold}${n}${off}${dim} ${d}┐${off}"
+    done
+    printf '%s\n' "$row"
+    for (( r = 0; r < H; r++ )); do
+      row=
+      for (( j = i; j < i + cols && j < ${#names[@]}; j++ )); do
+        l=${lines[j * 4 + r]}; __sx_strip "$l"; printf -v pad '%*s' $(( iw - 2 - ${#REPLY} )) ''
+        [[ -n $row ]] && row+=$g
+        row+="${dim}│${off} ${l}${off}${pad} ${dim}│${off}"
+      done
+      printf '%s\n' "$row"
+    done
+    row=
+    for (( j = i; j < i + cols && j < ${#names[@]}; j++ )); do
+      printf -v d '%*s' "$iw" ''; d=${d// /─}
+      [[ -n $row ]] && row+=$g
+      row+="${dim}└${d}┘${off}"
+    done
+    printf '%s\n' "$row"
+  done
+  printf '%sApply one with: sx-theme <name>%s\n' "$dim" "$off"
+}
+sx-theme() {
+  case $1 in
+    '') __sx_theme_show; return;;
+    -l|--list) echo '@LIST@'; return;;
+    -h|--help)
+      printf '%s\n' 'usage: sx-theme [name]' '       sx-theme -l | --list' '       sx-theme -h | --help' \
+        'Changes the prompt of this shell.' \
+        '  (no name)    preview every theme' \
+        '  <name>       use the theme <name>' \
+        '  -l, --list   list the theme names' \
+        'sxt is the same command.'
+      return;;
+    -*) echo "sx-theme: unknown option $1, see sx-theme --help" >&2; return 1;;
+  esac
+  local t
+  t=$(__sx_theme_text "$1") || { echo "sx-theme: no theme named $1" >&2; return 1; }
+  eval "$t"; __sx_ps1
+}
+alias sxt=sx-theme
+complete -W '@LIST@' sx-theme sxt
+"#;
+
 /// The PS1 string of a prompt theme, for the preview.
 pub fn theme_ps1(dir: &Path, name: &str) -> Option<String> {
     if is_prompt_snippet(name) {
@@ -217,6 +318,8 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
         if !text.ends_with('\n') {
             out.push('\n');
         }
+        out.push_str("# --- sx-theme ---\n");
+        out.push_str(&theme_switcher(dir));
     }
     push_block(&mut out, "title", TITLE);
     out
