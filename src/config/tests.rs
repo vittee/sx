@@ -34,6 +34,7 @@ fn build_rc_orders_by_name_and_skips_unselected() {
     let (snippets, clip) = rc.split_once("# --- clip ---\n").unwrap();
     assert_eq!(snippets, "# --- 05-first ---\necho first\n# --- 30-last ---\necho last\n");
     assert!(clip.starts_with("clip() {"), "{clip}");
+    assert!(clip.contains("# --- title ---\n__sx_tc='"), "{clip}");
 }
 
 #[test]
@@ -44,6 +45,7 @@ fn prompt_theme_is_appended_after_snippets() {
     cfg.set_prompt("default", Some("minimal"));
     let rc = build_rc(tmp.path(), &cfg, "default");
     let theme = prompt::theme("minimal").unwrap();
+    let rc = rc.split("# --- title ---").next().unwrap();
     assert!(rc.ends_with(&format!("# --- prompt: minimal ---\n{theme}")), "{rc}");
     assert!(rc.find("mine> ").unwrap() < rc.find("# --- prompt: minimal").unwrap());
 }
@@ -52,9 +54,9 @@ fn prompt_theme_is_appended_after_snippets() {
 fn no_theme_means_no_ps1_and_unknown_theme_is_ignored() {
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", None);
-    assert!(!build_rc(tmp.path(), &cfg, "default").contains("PS1"));
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("export PS1"));
     cfg.set_prompt("default", Some("no-such-theme"));
-    assert!(!build_rc(tmp.path(), &cfg, "default").contains("PS1"));
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("export PS1"));
 }
 
 #[test]
@@ -188,11 +190,12 @@ fn user_prompt_themes_are_used_and_a_missing_one_is_ignored() {
     cfg.toggle_snippet("default", "mine.prompt"); // never sent as a snippet
     cfg.set_prompt("default", Some("mine.prompt"));
     let rc = build_rc(tmp.path(), &cfg, "default");
+    let rc = rc.split("# --- title ---").next().unwrap();
     assert!(rc.ends_with("# --- prompt: mine.prompt ---\nexport PS1='mine\\h> '\n"), "{rc}");
     assert_eq!(rc.matches("export PS1").count(), 1, "sent once, as the theme: {rc}");
     assert!(!rc.contains("# --- mine.prompt ---"), "not sent as a snippet: {rc}");
     cfg.set_prompt("default", Some("gone.prompt"));
-    assert!(!build_rc(tmp.path(), &cfg, "default").contains("PS1"));
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("export PS1"));
 }
 
 #[test]
@@ -305,6 +308,7 @@ fn a_prompt_snippet_with_only_the_ps1_string_is_wrapped_for_the_server() {
     write_snippet(tmp.path(), "mine.prompt", "\\u@\\h\\$ \n").unwrap();
     cfg.set_prompt("default", Some("mine.prompt"));
     let rc = build_rc(tmp.path(), &cfg, "default");
+    let rc = rc.split("# --- title ---").next().unwrap();
     assert!(rc.ends_with("# --- prompt: mine.prompt ---\nexport PS1='\\u@\\h\\$ '\n"), "{rc}");
     assert_eq!(theme_ps1(tmp.path(), "mine.prompt").as_deref(), Some("\\u@\\h\\$ "));
     assert_eq!(theme_ps1(tmp.path(), "minimal").as_deref(), Some("\\u@\\h:\\w\\$ "));
@@ -448,6 +452,18 @@ fn clip_is_always_sent_and_writes_osc_52_to_the_terminal() {
 }
 
 #[test]
+fn the_title_hook_is_sent_last_and_only_once() {
+    let (tmp, cfg) = setup();
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert_eq!(rc.matches("__sx_title() {").count(), 1, "{rc}");
+    assert!(rc.contains(r"\033]0;[sx] %s@%s: %s\a"), "{rc}");
+    assert!(rc.find("# --- title ---").unwrap() > rc.find("# --- prompt: ").unwrap(), "{rc}");
+    assert!(rc.contains("return $s; }"), "the hook must keep $?: {rc}");
+    assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]""#), "the title goes last in PS1: {rc}");
+    assert!(!rc.contains("__sx_t()") && !rc.contains("export -f"), "no function: sudo -i drops them: {rc}");
+}
+
+#[test]
 fn colorterm_is_created_off_and_sets_truecolor_when_turned_on() {
     let (tmp, mut cfg) = setup();
     assert_eq!(read_snippet(tmp.path(), "colorterm").unwrap().lines().last(), Some("export COLORTERM=truecolor"));
@@ -469,4 +485,35 @@ fn no_history_is_created_off_and_unsets_histfile_when_turned_on() {
 "));
     fs::remove_file(snippets_dir(tmp.path()).join("no-history.sh")).unwrap();
     assert_eq!(add_missing_presets(tmp.path()).unwrap(), ["no-history"]);
+}
+
+/// Runs `script` in an interactive bash that has loaded the rc of the default profile with a prompt
+/// theme, as the server does. `None` when there is no bash. Returns stdout and stderr.
+fn run_in_rc(script: &str) -> Option<(String, String)> {
+    use std::io::Write;
+    let (tmp, mut cfg) = setup();
+    cfg.set_prompt("default", Some("fino"));
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    let mut child = std::process::Command::new("bash")
+        .arg("--norc")
+        .arg("-i")
+        .env("LANG", "C.UTF-8")
+        .env("HOME", tmp.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .ok()?;
+    child.stdin.take()?.write_all(format!("{rc}\n{script}").as_bytes()).ok()?;
+    let out = child.wait_with_output().ok()?;
+    Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
+}
+
+#[test]
+fn the_title_runs_inside_ps1_with_no_function_and_keeps_the_status() {
+    // `sudo -i` and tmux start shells that have none of our functions, so the title is plain code in PS1
+    let script = "cd /tmp; false; __sx_title; echo \"status=$?\"; t=${PS1@P}; case $t in *'0;[sx] '*'@'*': /tmp'*) echo TITLE_OK;; *) echo TITLE_MISSING;; esac\n";
+    let Some((out, err)) = run_in_rc(script) else { return };
+    assert!(out.contains("TITLE_OK") && !out.contains("TITLE_MISSING"), "{out}");
+    assert!(!err.contains("command not found"), "{err}");
 }

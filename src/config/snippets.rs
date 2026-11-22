@@ -133,6 +133,18 @@ const CLIP: &str = "clip() { case ${1-} in -h|--help) printf '%s\\n' 'usage: cli
 local d; if [ $# -gt 0 ]; then d=$(printf %s \"$*\" | base64); else d=$(base64); fi; \
 printf '\\033]52;c;%s\\a' \"$(printf %s \"$d\" | tr -d '\\n')\" >/dev/tty; }\n";
 
+/// Sets the window and tab title of your terminal (OSC 0) to `[sx] user@host: dir` at every prompt,
+/// so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence. It is added to the
+/// end of `PS1`, inside `\[ \]` so it has no width, because bash prints `PS1` after `PROMPT_COMMAND`
+/// and a server's own `PS1` usually sets a title of its own, which would win from anywhere earlier.
+/// The code sits inside `PS1` as a command substitution, not in a function, so it also runs in a
+/// shell that did not inherit one, such as the one `sudo -i` starts.
+const TITLE: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$HOME"}";; esac;printf "\033]0;[sx] %s@%s: %s\a" "${USER:-$(id -un)}" "${HOSTNAME%%.*}" "$d"'
+__sx_ps1() { case $PS1 in *'033]0;[sx] '*) ;; *) PS1="$PS1\[\$($__sx_tc)\]";; esac; }
+__sx_title() { local s=$?; __sx_ps1; return $s; }
+case $PROMPT_COMMAND in *__sx_title*) ;; *) PROMPT_COMMAND="__sx_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
+"##;
+
 /// The PS1 string of a prompt theme, for the preview.
 pub fn theme_ps1(dir: &Path, name: &str) -> Option<String> {
     if is_prompt_snippet(name) {
@@ -197,5 +209,6 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
             out.push('\n');
         }
     }
+    push_block(&mut out, "title", TITLE);
     out
 }

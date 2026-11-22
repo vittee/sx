@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// Window title while the TUI is up, so a tab shows that `sx` is running.
+const TUI_TITLE: &str = "[sx]";
+
 pub(super) fn enter(mouse: bool) -> io::Result<DefaultTerminal> {
     let term = ratatui::init();
     if mouse {
@@ -49,8 +52,10 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    log::set_title(TUI_TITLE);
     let result = event_loop(&mut term, &mut app);
     leave();
+    log::set_title(&crate::local_title());
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -109,6 +114,7 @@ pub(super) fn connect(term: &mut DefaultTerminal, app: &mut App, args: Vec<Strin
         let _ = io::stdin().read_line(&mut String::new());
     }
     *term = enter(app.mouse)?;
+    log::set_title(TUI_TITLE);
     term.clear()?;
     match outcome {
         SshOutcome::Interrupted => app.say(format!("connection to {host} aborted")),

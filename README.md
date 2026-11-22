@@ -228,6 +228,23 @@ Use `clip some text`, or pipe into it: `cat ~/.ssh/id_ed25519.pub | clip`.
 
 Inside tmux, add `set -g set-clipboard on` to your tmux config.
 
+### Window and tab title
+
+`[sx]` in the title of your terminal window or tab tells you that `sx` is running.<br>
+The title changes as you go:
+
+| When | Title |
+|---|---|
+| the TUI is open | `[sx]` |
+| connecting | `[sx] host` |
+| on the server, before every prompt | `[sx] user@host: dir` |
+| `sx` has ended | `user@host: dir` of your own machine |
+
+The server part follows `cd`.<br>
+A prompt theme replaces the server's own `PS1`, which is where many servers set the title,
+so `sx` does it itself.<br>
+Inside tmux, add `set -g set-titles on` to your tmux config to pass it on to your terminal.
+
 ## How it works
 
 `sx` runs `ssh` with two extra options:

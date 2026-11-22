@@ -60,6 +60,24 @@ pub fn stdout_color() -> bool {
     color_enabled(std::io::stdout().is_terminal())
 }
 
+/// The OSC 0 sequence that sets the window and tab title.
+fn title_sequence(title: &str) -> String {
+    // Control characters in a title could end the sequence early.
+    let clean: String = title.chars().filter(|c| !c.is_control()).collect();
+    format!("\x1b]0;{clean}\x07")
+}
+
+/// Sets the title of the terminal window or tab. Does nothing when stdout is not a terminal that
+/// understands escape sequences.
+pub fn set_title(title: &str) {
+    let out = std::io::stdout();
+    if out.is_terminal() && env::var("TERM").map_or(true, |t| t != "dumb") && ansi_supported() {
+        let mut out = out.lock();
+        let _ = out.write_all(title_sequence(title).as_bytes());
+        let _ = out.flush();
+    }
+}
+
 fn emit(level: Level, msg: &str, to_stderr: bool) {
     let (tty, mut out): (bool, Box<dyn Write>) = if to_stderr {
         (std::io::stderr().is_terminal(), Box::new(std::io::stderr()))

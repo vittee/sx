@@ -643,12 +643,12 @@ fn prompt_choice_changes_the_payload() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
     let with_theme = config::build_rc(&app.dir, &app.cfg, "default");
-    assert!(with_theme.contains("PS1="));
+    assert!(with_theme.contains("export PS1="));
     key(&mut app, KeyCode::Right);
     for _ in 0..10 {
         key(&mut app, KeyCode::Up);
     }
-    assert!(!config::build_rc(&app.dir, &app.cfg, "default").contains("PS1="));
+    assert!(!config::build_rc(&app.dir, &app.cfg, "default").contains("export PS1="));
 }
 
 #[test]

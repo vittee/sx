@@ -213,3 +213,19 @@ fn help_names_the_config_directory() {
     let line = text.lines().find(|l| l.starts_with("Config: ")).expect("a Config line");
     assert!(line.len() > "Config: ".len());
 }
+
+#[test]
+fn the_local_title_matches_the_one_the_server_sets() {
+    assert_eq!(title_text("me", "pc", "/home/me/src", Some("/home/me")), "me@pc: ~/src");
+    assert_eq!(title_text("me", "pc", "/home/me", Some("/home/me")), "me@pc: ~");
+    assert_eq!(title_text("me", "pc", "/tmp", Some("/home/me")), "me@pc: /tmp");
+    assert_eq!(title_text("me", "pc", r"C:\Users\me\sx", Some(r"C:\Users\me")), "me@pc: ~/sx");
+    assert_eq!(title_text("me", "pc", "/tmp", None), "me@pc: /tmp");
+}
+
+#[test]
+fn a_session_is_injected_only_when_sx_adds_its_remote_command() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(is_injected(&args(&["-o", "RemoteCommand=exec bash", "web1"])));
+    assert!(!is_injected(&args(&["web1", "ls"])));
+}

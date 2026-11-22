@@ -220,6 +220,9 @@ fn outcome_of(status: std::process::ExitStatus) -> SshOutcome {
 pub fn run_and_record(args: &[String], host: &str) -> SshOutcome {
     let started = std::time::Instant::now();
     let when = config::now_secs();
+    if is_injected(args) {
+        log::set_title(&format!("[sx] {host}"));
+    }
     let outcome = run_ssh(args);
     if let Some(dir) = config::config_dir() {
         let key = config::Config::load(&dir).map_or_else(|_| host.to_string(), |c| host_key(&c, host));
@@ -244,10 +247,37 @@ fn finish(ctrl_c: bool, status: std::process::ExitStatus) -> SshOutcome {
 /// exit status this platform's ssh reports for it.
 pub static CTRL_C: AtomicBool = AtomicBool::new(false);
 
+/// The title the server sets, `user@host: dir`, for this machine. The home directory shows as `~`.
+fn title_text(user: &str, host: &str, dir: &str, home: Option<&str>) -> String {
+    let dir = match home {
+        Some(h) if !h.is_empty() && dir.starts_with(h) => format!("~{}", dir[h.len()..].replace('\\', "/")),
+        _ => dir.to_string(),
+    };
+    format!("{user}@{host}: {dir}")
+}
+
+/// Whether `sx` added its own `RemoteCommand`, so the session runs the sx shell on the server.
+fn is_injected(args: &[String]) -> bool {
+    args.iter().any(|a| a.starts_with("RemoteCommand="))
+}
+
+fn local_title() -> String {
+    let var = |names: &[&str]| names.iter().find_map(|n| env::var(n).ok()).unwrap_or_default();
+    let dir = env::current_dir().map(|d| d.display().to_string()).unwrap_or_default();
+    let home = config::home_dir().map(|h| h.display().to_string());
+    title_text(&var(&["USER", "USERNAME"]), &var(&["HOSTNAME", "COMPUTERNAME"]), &dir, home.as_deref())
+}
+
 /// Runs `ssh` with inherited stdio.
 pub fn run_ssh(args: &[String]) -> SshOutcome {
     CTRL_C.store(false, Ordering::Relaxed);
-    match Command::new("ssh").args(args).status() {
+    let result = Command::new("ssh").args(args).status();
+    // The remote shell set the title to its own `user@host: dir`. Put the local one back, because
+    // a local shell only does that at its next prompt, and some never do.
+    if is_injected(args) {
+        log::set_title(&local_title());
+    }
+    match result {
         Ok(status) => finish(CTRL_C.swap(false, Ordering::Relaxed), status),
         Err(e) => {
             log::error(format!("cannot run ssh: {e}"));
