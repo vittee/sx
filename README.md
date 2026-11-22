@@ -221,6 +221,13 @@ Every built-in theme ends in `$`, or `#` for root.
 A `.prompt` file with a `PS1=` line is used as bash, unchanged, so any other lines in it run.<br>
 Put anything else you want on the server in a normal `.sh` snippet.
 
+### Copy to your clipboard
+
+`clip` on the server puts text in the clipboard of the machine you are sitting at.<br>
+Use `clip some text`, or pipe into it: `cat ~/.ssh/id_ed25519.pub | clip`.
+
+Inside tmux, add `set -g set-clipboard on` to your tmux config.
+
 ## How it works
 
 `sx` runs `ssh` with two extra options:

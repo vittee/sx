@@ -125,6 +125,14 @@ pub fn theme_text(dir: &Path, name: &str) -> Option<String> {
     }
 }
 
+/// `clip` copies to the clipboard of the terminal you are sitting at, with the OSC 52 escape
+/// sequence: `clip text`, or `cmd | clip` when something is piped in. It writes to `/dev/tty`, so
+/// it still works at the end of a pipeline. The base64 is joined into one line because GNU
+/// `base64` wraps at 76 columns.
+const CLIP: &str = "clip() { case ${1-} in -h|--help) printf '%s\\n' 'usage: clip [text]' 'Copies text, or what is piped in, to the clipboard of the machine you sit at.' 'Example: cat file | clip'; return;; -*) echo \"clip: unknown option $1, see clip --help\" >&2; return 1;; esac; \
+local d; if [ $# -gt 0 ]; then d=$(printf %s \"$*\" | base64); else d=$(base64); fi; \
+printf '\\033]52;c;%s\\a' \"$(printf %s \"$d\" | tr -d '\\n')\" >/dev/tty; }\n";
+
 /// The PS1 string of a prompt theme, for the preview.
 pub fn theme_ps1(dir: &Path, name: &str) -> Option<String> {
     if is_prompt_snippet(name) {
@@ -180,6 +188,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
     for (kind, names, text) in &merged {
         push_block(&mut out, &names.join(", "), &wrap_snippet(*kind, text));
     }
+    push_block(&mut out, "clip", CLIP);
     if let Some(name) = p.prompt.as_deref()
         && let Some(text) = theme_text(dir, name)
     {

@@ -31,7 +31,9 @@ fn build_rc_orders_by_name_and_skips_unselected() {
     cfg.toggle_snippet("default", "20-aliases"); // off
     cfg.set_prompt("default", None);
     let rc = build_rc(tmp.path(), &cfg, "default");
-    assert_eq!(rc, "# --- 05-first ---\necho first\n# --- 30-last ---\necho last\n");
+    let (snippets, clip) = rc.split_once("# --- clip ---\n").unwrap();
+    assert_eq!(snippets, "# --- 05-first ---\necho first\n# --- 30-last ---\necho last\n");
+    assert!(clip.starts_with("clip() {"), "{clip}");
 }
 
 #[test]
@@ -434,6 +436,15 @@ fn named_option_sets_round_trip_and_old_configs_still_load() {
     assert!(old.hosts["old"].options.is_empty());
     assert_eq!(old.hosts["old"].ssh_args(), ["-l", "root", "-p", "2200"]);
     assert_eq!(ConnOptions::default().summary(), "no options");
+}
+
+#[test]
+fn clip_is_always_sent_and_writes_osc_52_to_the_terminal() {
+    let (tmp, mut cfg) = setup();
+    cfg.set_prompt("default", None);
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains("# --- clip ---\nclip() {"), "{rc}");
+    assert!(rc.contains(r"\033]52;c;%s\a") && rc.contains(">/dev/tty"), "{rc}");
 }
 
 #[test]
