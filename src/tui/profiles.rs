@@ -178,7 +178,7 @@ impl App {
                     KeyCode::Char(' ') | KeyCode::Enter => self.toggle_checked(),
                     KeyCode::Left if sel.is_multiple_of(cols) => self.prof_focus = ProfFocus::Prompt,
                     KeyCode::Left => Self::move_sel(&mut self.chk_state, len, -1),
-                    KeyCode::Esc => self.prof_focus = ProfFocus::List,
+                    KeyCode::Esc => self.prof_focus = ProfFocus::Prompt,
                     _ => {}
                 }
                 return;

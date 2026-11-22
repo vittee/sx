@@ -1882,3 +1882,19 @@ fn the_list_pages_use_ctrl_keys_and_plain_letters_do_nothing() {
         key(&mut app, KeyCode::Esc);
     }
 }
+
+#[test]
+fn esc_goes_back_one_pane_in_profiles() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right);
+    assert_eq!(app.prof_focus, ProfFocus::Prompt);
+    assert!(render(&mut app).contains("←/Esc back"));
+    key(&mut app, KeyCode::Right);
+    assert_eq!(app.prof_focus, ProfFocus::Snippets);
+    assert!(render(&mut app).contains("←/Esc back"));
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(app.prof_focus, ProfFocus::Prompt, "Esc goes back one pane, like Left");
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(app.prof_focus, ProfFocus::List);
+}
