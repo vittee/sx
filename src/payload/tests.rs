@@ -27,3 +27,10 @@ fn payload_has_no_whitespace() {
     let p = encode(&"export X=1\n".repeat(200)).unwrap();
     assert!(!p.contains(char::is_whitespace));
 }
+
+#[test]
+fn the_payload_is_taken_out_of_the_environment_before_the_server_rc_runs() {
+    let out = decode(&encode("x\n").unwrap());
+    let take = out.find("__sx_payload=${SX_RC-}; unset SX_RC").unwrap();
+    assert!(take < out.find(". ~/.bashrc").unwrap());
+}

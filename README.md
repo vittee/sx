@@ -227,7 +227,7 @@ with a made-up user, host and directory, a git branch and a failed command, so y
 The preview needs bash 4.4 or newer and a UTF-8 locale. Without them it prints the names.<br>
 `sx-theme -l` lists the names, and Tab completes them.<br>
 `sxt` is a short alias for it.<br>
-`--help` prints the usage of `sx-theme`.<br>
+`--help` prints the usage of `sx-theme`, `sx-sudo` and `clip`.<br>
 It lasts until you exit, and the profile's theme is used again on the next connection.
 
 ### Copy to your clipboard
@@ -236,6 +236,15 @@ It lasts until you exit, and the profile's theme is used again on the next conne
 Use `clip some text`, or pipe into it: `cat ~/.ssh/id_ed25519.pub | clip`.
 
 Inside tmux, add `set -g set-clipboard on` to your tmux config.
+
+### Shell as another user
+
+`sudo -i` starts a new shell for root that reads only root's own files, so your prompt and aliases are gone.<br>
+`sx-sudo` does the same job and keeps them: `sx-sudo`, or `sx-sudo someuser`.
+
+It sends your setup to `sudo` again, through its standard input.<br>
+The shell starts in the user's home directory, as with `sudo -i`, but it is not a login shell,
+so the user's `.profile` does not run.<br>
 
 ### Window and tab title
 

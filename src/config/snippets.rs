@@ -133,6 +133,17 @@ const CLIP: &str = "clip() { case ${1-} in -h|--help) printf '%s\\n' 'usage: cli
 local d; if [ $# -gt 0 ]; then d=$(printf %s \"$*\" | base64); else d=$(base64); fi; \
 printf '\\033]52;c;%s\\a' \"$(printf %s \"$d\" | tr -d '\\n')\" >/dev/tty; }\n";
 
+/// `sx-sudo [user]` starts a shell for `user` (root by default) with your rc, like `sudo -i` but
+/// with your prompt and aliases. `sudo` cleans the environment and the new shell reads only the
+/// other user's own files, so the payload is sent again. It goes through the standard input of
+/// `sudo`, not its arguments, because sudo writes its arguments in the server's log. The shell
+/// takes the terminal back from its standard output, not from `/dev/tty`: `tty` then names the real
+/// terminal, which `tmux` needs (its server cannot open the name `/dev/tty`).
+const SUDO: &str = "sx-sudo() { case ${1-} in -h|--help) printf '%s\\n' 'usage: sx-sudo [user]' 'Starts a shell for [user] (root by default) with your prompt and aliases,' 'like sudo -i. It works only in a shell that sx started.'; return;; \
+-*) echo \"sx-sudo: unknown option $1, see sx-sudo --help\" >&2; return 1;; esac; local u=${1:-root}; [ -n \"${__sx_payload-}\" ] || { echo 'sx-sudo: this shell was not started by sx' >&2; return 1; }; \
+printf %s \"$__sx_payload\" | sudo -H -u \"$u\" bash -c 'P=$(cat); export SX_RC=$P; cd ~ 2>/dev/null; \
+exec bash --rcfile <(printf %s \"$P\" | base64 -d | gunzip) -i <&1'; }\n";
+
 /// Sets the window and tab title of your terminal (OSC 0) to `[sx] user@host: dir` at every prompt,
 /// so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence. It is added to the
 /// end of `PS1`, inside `\[ \]` so it has no width, because bash prints `PS1` after `PROMPT_COMMAND`
@@ -311,6 +322,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
         push_block(&mut out, &names.join(", "), &wrap_snippet(*kind, text));
     }
     push_block(&mut out, "clip", CLIP);
+    push_block(&mut out, "sx-sudo", SUDO);
     if let Some(name) = p.prompt.as_deref()
         && let Some(text) = theme_text(dir, name)
     {

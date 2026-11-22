@@ -522,6 +522,18 @@ fn no_history_is_created_off_and_unsets_histfile_when_turned_on() {
     assert_eq!(add_missing_presets(tmp.path()).unwrap(), ["no-history"]);
 }
 
+#[test]
+fn sx_sudo_is_always_sent_and_passes_the_payload_on_stdin_not_in_the_arguments() {
+    let (tmp, cfg) = setup();
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    let at = rc.find("# --- sx-sudo ---").expect("the sx-sudo block");
+    let block = &rc[at..];
+    assert!(block.contains("sx-sudo() {"), "{block}");
+    // sudo logs its arguments, so the payload goes through a pipe
+    assert!(block.contains("printf %s \"$__sx_payload\" | sudo -H -u \"$u\" bash -c"), "{block}");
+    assert!(block.contains("-i <&1'") && !block.contains("</dev/tty"), "tmux needs the real tty name: {block}");
+}
+
 /// Runs `script` in an interactive bash that has loaded the rc of the default profile with a prompt
 /// theme, as the server does. `None` when there is no bash. Returns stdout and stderr.
 fn run_in_rc(script: &str) -> Option<(String, String)> {
@@ -542,6 +554,31 @@ fn run_in_rc(script: &str) -> Option<(String, String)> {
     child.stdin.take()?.write_all(format!("{rc}\n{script}").as_bytes()).ok()?;
     let out = child.wait_with_output().ok()?;
     Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
+}
+
+#[test]
+fn every_sx_command_answers_help_and_refuses_an_unknown_option() {
+    let Some((out, _)) = run_in_rc("sx-theme --help
+echo ---
+sxt -h
+echo ---
+sx-sudo --help
+echo ---
+clip -h
+echo ---
+sx-theme -x
+echo \"rc=$?\"
+sx-sudo -x
+echo \"rc=$?\"
+clip --nope
+echo \"rc=$?\"
+") else { return };
+    // The prompt marks around the output are not part of what is checked.
+    assert_eq!(out.matches("usage: sx-theme [name]").count(), 2, "sx-theme and sxt: {out}");
+    assert!(out.contains("-l, --list   list the theme names"), "{out}");
+    assert!(out.contains("usage: sx-sudo [user]") && out.contains("like sudo -i"), "{out}");
+    assert!(out.contains("usage: clip [text]") && out.contains("cat file | clip"), "{out}");
+    assert_eq!(out.matches("rc=1").count(), 3, "an unknown option fails: {out}");
 }
 
 #[test]

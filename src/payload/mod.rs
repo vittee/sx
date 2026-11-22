@@ -5,8 +5,10 @@ use base64::engine::general_purpose::STANDARD;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 
-/// Keeps the server's own environment: its `~/.bashrc` runs before the user's rc.
-const SERVER_RC_PRELUDE: &str = "[ -f ~/.bashrc ] && . ~/.bashrc\n";
+/// First the payload itself is taken out of the environment (`SX_RC`, set by the bootstrap) into a
+/// variable that is not exported, for `sx-sudo`. Then the server's own `~/.bashrc` runs before the
+/// user's rc, so it never sees the payload.
+const SERVER_RC_PRELUDE: &str = "__sx_payload=${SX_RC-}; unset SX_RC\n[ -f ~/.bashrc ] && . ~/.bashrc\n";
 
 /// The payload travels in the `ssh` command line. Windows allows about 32 KB for a whole command
 /// line (`CreateProcess`), the lowest limit on a client, so a payload above this size may be refused

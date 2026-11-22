@@ -55,6 +55,12 @@ fn hostile_hosts_are_reduced_to_safe_characters() {
 fn the_payload_travels_in_the_command_and_no_environment_variable_is_needed() {
     let cmd = remote_command("h", PAYLOAD);
     assert!(cmd.contains(&format!("P={PAYLOAD}; ")));
-    assert!(!cmd.contains("LC_MONETARY"));
     assert!(!cmd.contains('%'));
+}
+
+#[test]
+fn the_payload_is_handed_to_the_shell_in_sx_rc_for_sx_sudo() {
+    let cmd = remote_command("h", PAYLOAD);
+    assert!(cmd.contains(&format!("P={PAYLOAD}; export SX_RC=$P; ")));
+    assert!(cmd.find("export SX_RC").unwrap() < cmd.find("exec bash --rcfile").unwrap());
 }

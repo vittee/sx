@@ -24,7 +24,7 @@ pub fn remote_command(host: &str, payload: &str) -> String {
             "elif ! echo QQ== | base64 -d >/dev/null 2>&1 || ! command -v gunzip >/dev/null 2>&1; ",
             "then W=\"base64 -d or gunzip is missing\"; fi; ",
             "if [ -z \"$W\" ]; then exec bash -c '",
-            "P={payload}; ",
+            "P={payload}; export SX_RC=$P; ",
             "exec bash --rcfile <(echo \"$P\" | base64 -d | gunzip) -i",
             "'; fi; ",
             "printf '\\033[1;33msx:\\033[0m '; echo \"$W, using the plain shell\"; ",
