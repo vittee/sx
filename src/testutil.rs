@@ -6,14 +6,16 @@ use std::io::Write;
 /// the modes of the console it shares with `cargo test`, and the output printed meanwhile loses its
 /// carriage returns.
 pub fn bash() -> std::process::Command {
-    let mut c = std::process::Command::new("bash");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut c = std::process::Command::new("bash");
         c.creation_flags(CREATE_NO_WINDOW);
+        c
     }
-    c
+    #[cfg(not(windows))]
+    std::process::Command::new("bash")
 }
 
 /// What [`bash_lock`] hands out: it holds the lock on Windows and is empty elsewhere.
