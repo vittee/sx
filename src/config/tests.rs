@@ -10,7 +10,7 @@ fn setup() -> (tempfile::TempDir, Config) {
 #[test]
 fn first_run_creates_samples_and_default_profile() {
     let (tmp, cfg) = setup();
-    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "cmd-colors", "colorterm", "man-colors", "no-history", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "cmd-colors", "colorterm", "dir-keys", "man-colors", "no-history", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert_eq!(cfg.profiles["default"].snippets, ["20-aliases"]);
     assert_eq!(cfg.profiles["default"].prompt.as_deref(), Some(prompt::DEFAULT_THEME));
     assert!(!ensure_initialized(tmp.path()).unwrap().1);
@@ -525,7 +525,7 @@ fn no_history_is_created_off_and_unsets_histfile_when_turned_on() {
 #[test]
 fn every_shell_preset_is_created_off_and_comes_back_when_deleted() {
     let (tmp, cfg) = setup();
-    let names = ["cmd-colors", "man-colors", "utf8"];
+    let names = ["cmd-colors", "dir-keys", "man-colors", "utf8"];
     let rc = build_rc(tmp.path(), &cfg, "default");
     for name in names {
         let text = read_snippet(tmp.path(), name).unwrap();
@@ -598,6 +598,35 @@ echo \"rc=$?\"
     assert!(out.contains("usage: sx-sudo [user]") && out.contains("like sudo -i"), "{out}");
     assert!(out.contains("usage: clip [text]") && out.contains("cat file | clip"), "{out}");
     assert_eq!(out.matches("rc=1").count(), 3, "an unknown option fails: {out}");
+}
+
+#[test]
+fn dir_keys_go_back_and_forward_through_the_directories_you_visited() {
+    use std::io::Write;
+    let (tmp, mut cfg) = setup();
+    cfg.toggle_snippet("default", "dir-keys");
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    let script = "mkdir -p /tmp/sxdk/a/b; cd /tmp/sxdk; __sx_dk_track; cd a; __sx_dk_track; cd b; __sx_dk_track; \
+        __sx_dk_prev; __sx_dk_track; pwd; __sx_dk_prev; __sx_dk_track; pwd; __sx_dk_next; __sx_dk_track; pwd; \
+        __sx_dk_up; __sx_dk_track; pwd; __sx_dk_next; __sx_dk_track; pwd; echo back=${#__sx_dk_back[@]} fwd=${#__sx_dk_fwd[@]}\n";
+    let Ok(mut child) = std::process::Command::new("bash")
+        .arg("--norc")
+        .arg("-i")
+        .env("HOME", tmp.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return;
+    };
+    child.stdin.take().unwrap().write_all(format!("{rc}\n{script}").as_bytes()).unwrap();
+    let out = String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).replace('\r', "");
+    let dirs: Vec<&str> = out.lines().filter_map(|l| l.find("/tmp/sxdk").map(|i| &l[i..])).collect();
+    // back to a, back to /tmp/sxdk, forward to a, up to /tmp/sxdk (clears forward), forward does nothing.
+    // The start directory, /tmp/sxdk and a are what is left to go back to.
+    assert_eq!(dirs, ["/tmp/sxdk/a", "/tmp/sxdk", "/tmp/sxdk/a", "/tmp/sxdk", "/tmp/sxdk"], "{out}");
+    assert!(out.contains("back=3 fwd=0"), "{out}");
 }
 
 #[test]

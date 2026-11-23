@@ -214,6 +214,7 @@ Turn on the ones you want in Profiles.
 |---|---|
 | `man-colors` | colored man pages, and `less` keeps colors and ignores case in searches |
 | `cmd-colors` | color for `ls`, `grep` and `diff`, only where the server supports it |
+| `dir-keys` | `Alt-Up` goes to the parent directory, `Alt-Left` and `Alt-Right` go back and forward through the directories you visited. What you had typed goes to the kill ring, `Ctrl-Y` brings it back |
 | `utf8` | switches to a UTF-8 locale when the shell is not in one, so box drawing and accents show |
 
 ### Prompt themes

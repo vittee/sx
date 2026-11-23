@@ -142,6 +142,50 @@ case $(locale charmap 2>/dev/null) in
 esac
 "#;
 
+const DIR_KEYS: &str = r#"# sx dir-keys: Alt-Up goes to the parent directory, Alt-Left and Alt-Right go back and forward
+# What you had typed goes to the kill ring, Ctrl-Y brings it back.
+__sx_dk_back=() __sx_dk_fwd=() __sx_dk_last=$PWD __sx_dk_nav=
+__sx_dk_track() {
+  local s=$?
+  if [ "$PWD" != "$__sx_dk_last" ]; then
+    if [ -n "$__sx_dk_nav" ]; then
+      __sx_dk_nav=
+    else
+      __sx_dk_back+=("$__sx_dk_last")
+      __sx_dk_fwd=()
+      [ ${#__sx_dk_back[@]} -gt 100 ] && __sx_dk_back=("${__sx_dk_back[@]:1}")
+    fi
+    __sx_dk_last=$PWD
+  fi
+  return $s
+}
+__sx_dk_up() { cd .. 2>/dev/null; }
+__sx_dk_prev() {
+  local n=${#__sx_dk_back[@]} d=${PWD}
+  [ "$n" -gt 0 ] || return 0
+  __sx_dk_nav=1
+  if cd -- "${__sx_dk_back[n-1]}" 2>/dev/null; then __sx_dk_fwd+=("$d"); else __sx_dk_nav=; fi
+  __sx_dk_back=("${__sx_dk_back[@]:0:n-1}")
+}
+__sx_dk_next() {
+  local n=${#__sx_dk_fwd[@]} d=${PWD}
+  [ "$n" -gt 0 ] || return 0
+  __sx_dk_nav=1
+  if cd -- "${__sx_dk_fwd[n-1]}" 2>/dev/null; then __sx_dk_back+=("$d"); else __sx_dk_nav=; fi
+  __sx_dk_fwd=("${__sx_dk_fwd[@]:0:n-1}")
+}
+case $PROMPT_COMMAND in *__sx_dk_track*) ;; *) PROMPT_COMMAND="__sx_dk_track${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
+bind -x '"\C-x\C-u": __sx_dk_up'
+bind -x '"\C-x\C-b": __sx_dk_prev'
+bind -x '"\C-x\C-n": __sx_dk_next'
+bind '"\e[1;3A": "\C-a\C-k\C-x\C-u\n"'
+bind '"\e\e[A": "\C-a\C-k\C-x\C-u\n"'
+bind '"\e[1;3D": "\C-a\C-k\C-x\C-b\n"'
+bind '"\e\e[D": "\C-a\C-k\C-x\C-b\n"'
+bind '"\e[1;3C": "\C-a\C-k\C-x\C-n\n"'
+bind '"\e\e[C": "\C-a\C-k\C-x\C-n\n"'
+"#;
+
 /// Shell snippets created on the first run, off until you turn them on. ssh does not send
 /// `COLORTERM`, so vim and `less` on a server fall back to 256 colors. Turn `colorterm` on only when
 /// your terminal supports truecolor (Windows Terminal, iTerm2, kitty and WezTerm do). `no-history`
@@ -151,6 +195,7 @@ pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
     vec![
         ("cmd-colors", CMD_COLORS.to_string()),
         ("colorterm", COLORTERM.to_string()),
+        ("dir-keys", DIR_KEYS.to_string()),
         ("man-colors", MAN_COLORS.to_string()),
         ("no-history", NO_HISTORY.to_string()),
         ("utf8", UTF8.to_string()),
