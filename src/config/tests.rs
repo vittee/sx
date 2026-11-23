@@ -585,11 +585,15 @@ sx-sudo --help
 echo ---
 clip -h
 echo ---
+sx-info --help
+echo ---
 sx-theme -x
 echo \"rc=$?\"
 sx-sudo -x
 echo \"rc=$?\"
 clip --nope
+echo \"rc=$?\"
+sx-info -x
 echo \"rc=$?\"
 ") else { return };
     // The prompt marks around the output are not part of what is checked.
@@ -597,7 +601,30 @@ echo \"rc=$?\"
     assert!(out.contains("-l, --list   list the theme names"), "{out}");
     assert!(out.contains("usage: sx-sudo [user]") && out.contains("like sudo -i"), "{out}");
     assert!(out.contains("usage: clip [text]") && out.contains("cat file | clip"), "{out}");
-    assert_eq!(out.matches("rc=1").count(), 3, "an unknown option fails: {out}");
+    assert!(out.contains("usage: sx-info") && out.contains("the size of what was sent"), "{out}");
+    assert_eq!(out.matches("rc=1").count(), 4, "an unknown option fails: {out}");
+}
+
+#[test]
+fn sx_info_shows_the_profile_the_prompt_and_the_snippets() {
+    let Some((out, _)) = run_in_rc_after("__sx_payload=abcdef", "sx-info\necho ---\nsx-theme -l >/dev/null; sx-theme robbyrussell; sx-info\n") else { return };
+    let first = out.split("---").next().unwrap();
+    // the prompt marks can sit in front of the first line
+    let line = |label: &str| first.lines().find_map(|l| l.find(label).map(|i| l[i..].to_string())).unwrap_or_else(|| panic!("no {label} line: {out}"));
+    assert!(line("sx  ").contains(env!("CARGO_PKG_VERSION")), "{out}");
+    assert!(line("profile").ends_with("default"), "{out}");
+    assert!(line("prompt").ends_with("fino"), "{out}");
+    assert!(line("snippets").ends_with("20-aliases"), "{out}");
+    assert!(line("sent").ends_with("6 bytes"), "{out}");
+    assert!(!first.contains("\nvim "), "no vim line without a vim snippet: {out}");
+    let after = out.rsplit("---").next().unwrap();
+    assert!(after.lines().any(|l| l.contains("prompt ") && l.ends_with("robbyrussell")), "sx-theme changes the prompt line: {out}");
+}
+
+#[test]
+fn sx_info_refuses_to_run_in_a_shell_that_sx_did_not_start() {
+    let Some((out, err)) = run_in_rc("sx-info; echo \"rc=$?\"\n") else { return };
+    assert!(err.contains("sx-info: this shell was not started by sx") && out.contains("rc=1"), "{out}{err}");
 }
 
 #[test]

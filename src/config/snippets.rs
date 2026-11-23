@@ -317,6 +317,43 @@ pub fn theme_ps1(dir: &Path, name: &str) -> Option<String> {
     }
 }
 
+/// `sx-info` shows what `sx` gave this shell. The values that only the build knows (version, profile,
+/// prompt, snippet names) are set as plain variables in front of the function.
+const INFO: &str = r#"sx-info() {
+  case ${1-} in
+    -h|--help)
+      printf '%s\n' 'usage: sx-info' 'Shows what sx gave this shell: the profile, the prompt, the snippets,' 'the host and the size of what was sent.'
+      return;;
+    '') ;;
+    *) echo "sx-info: unknown option $1, see sx-info --help" >&2; return 1;;
+  esac
+  [ -n "${__sx_payload-}" ] || { echo 'sx-info: this shell was not started by sx' >&2; return 1; }
+  local theme=${__sx_theme_cur:-$__sx_i_prompt}
+  set -- sx "$__sx_i_ver" profile "$__sx_i_profile"
+  set -- "$@" prompt "${theme:-none}" snippets "${__sx_i_shell:-none}"
+  [ -z "$__sx_i_vim" ] || set -- "$@" vim "$__sx_i_vim"
+  [ -z "$__sx_i_tmux" ] || set -- "$@" tmux "$__sx_i_tmux"
+  set -- "$@" host "${USER:-$(id -un)}@${HOSTNAME%%.*}" bash "${BASH_VERSION%%[!0-9.]*}" sent "${#__sx_payload} bytes"
+  printf '%-12s %s\n' "$@"
+}
+"#;
+
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+fn info_block(profile: &str, prompt: Option<&str>, plain: &[String], vim: &[String], tmux: &[String]) -> String {
+    format!(
+        "__sx_i_ver={}\n__sx_i_profile={}\n__sx_i_prompt={}\n__sx_i_shell={}\n__sx_i_vim={}\n__sx_i_tmux={}\n{INFO}",
+        sh_quote(env!("CARGO_PKG_VERSION")),
+        sh_quote(profile),
+        sh_quote(prompt.unwrap_or("")),
+        sh_quote(&plain.join(", ")),
+        sh_quote(&vim.join(", ")),
+        sh_quote(&tmux.join(", ")),
+    )
+}
+
 /// Builds the rc text sent to the server: the profile's snippets (sorted by name), then its prompt
 /// theme. The theme comes last so an explicit choice wins over any `PS1` set in a snippet.
 pub fn build_rc(dir: &Path, cfg: &Config, profile: &str) -> String {
@@ -342,6 +379,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
     // Every vim snippet is joined into one config, and every tmux snippet into one, because the
     // server runs the program with a single file. They go after the shell snippets.
     let mut merged: Vec<(SnippetKind, Vec<String>, String)> = Vec::new();
+    let mut plain: Vec<String> = Vec::new();
     for name in list_snippets(dir).into_iter().filter(|n| wanted(n) && !is_prompt_snippet(n)) {
         let Ok(text) = read_snippet(dir, &name) else { continue };
         let kind = snippet_kind(&name);
@@ -359,6 +397,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
             continue;
         }
         push_block(&mut out, &name, &wrap_snippet(kind, &text));
+        plain.push(name);
     }
     for (kind, names, text) in &merged {
         push_block(&mut out, &names.join(", "), &wrap_snippet(*kind, text));
@@ -366,6 +405,8 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
     push_block(&mut out, "clip", CLIP);
     push_block(&mut out, "sx-sudo", SUDO);
     push_block(&mut out, "sx-tmux", TMUX);
+    let names_of = |k: SnippetKind| merged.iter().filter(|m| m.0 == k).flat_map(|m| m.1.clone()).collect::<Vec<_>>();
+    push_block(&mut out, "sx-info", &info_block(profile, p.prompt.as_deref(), &plain, &names_of(SnippetKind::Vim), &names_of(SnippetKind::Tmux)));
     if let Some(name) = p.prompt.as_deref()
         && let Some(text) = theme_text(dir, name)
     {
