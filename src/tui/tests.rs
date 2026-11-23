@@ -213,6 +213,26 @@ fn typing_narrows_the_jump_host_list() {
 }
 
 #[test]
+fn likely_jump_hosts_come_first_in_the_picker() {
+    let (_t, mut a) = app();
+    let entry = |alias: &str| HostEntry { alias: alias.into(), hostname: None, user: None, port: None, source: a.hosts[0].source.clone() };
+    a.hosts = vec![entry("db1"), entry("app"), entry("edge-bastion"), entry("hub"), entry("web")];
+    // `hub` is not named like a jump host, but another host already goes through it.
+    a.cfg.hosts.entry("web".into()).or_default().options.insert("via".into(), config::ConnOptions { jump: "me@hub:22".into(), ..Default::default() });
+    ctrl(&mut a, 'o');
+    for _ in 0..3 {
+        key(&mut a, KeyCode::Down);
+    }
+    ctrl(&mut a, 'k');
+    render(&mut a);
+    let names: Vec<String> = a.hits.form_keylist.iter().map(|(_, n)| n.clone()).collect();
+    let this = a.selected_host().map(|i| a.hosts[i].alias.clone()).unwrap();
+    let rest = ["app", "db1", "web"].into_iter().filter(|n| *n != this);
+    let want: Vec<&str> = ["hub", "edge-bastion"].into_iter().filter(|n| *n != this).chain(rest).collect();
+    assert_eq!(names, want);
+}
+
+#[test]
 fn the_hints_do_not_move_when_the_key_hint_appears() {
     let (_t, _s, mut a) = app_with_keys();
     ctrl(&mut a, 'o');

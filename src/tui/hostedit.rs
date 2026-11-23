@@ -75,6 +75,37 @@ fn scan_keys(dir: &std::path::Path) -> Vec<String> {
     keys
 }
 
+/// Words in a host name that suggest a jump host.
+const JUMP_WORDS: [&str; 7] = ["bastion", "jump", "gateway", "gw", "proxy", "hop", "bridge"];
+
+/// The other hosts, the likely jump hosts first: those that saved options already use as a jump
+/// host, then those with a name like `bastion`. The rest keep the list order.
+fn jump_candidates(hosts: &[HostEntry], cfg: &config::Config, this: &str) -> Vec<String> {
+    let mut used = std::collections::HashSet::new();
+    for p in cfg.hosts.values() {
+        for o in std::iter::once(p.default_options()).chain(p.options.values().cloned()) {
+            for j in o.jump.split(',') {
+                let j = j.trim();
+                let j = j.rsplit_once('@').map_or(j, |(_, h)| h);
+                used.insert(j.rsplit_once(':').map_or(j, |(h, _)| h).to_string());
+            }
+        }
+    }
+    let rank = |h: &HostEntry| {
+        let name = h.alias.to_lowercase();
+        if used.contains(&h.alias) || h.hostname.as_ref().is_some_and(|n| used.contains(n)) {
+            0
+        } else if JUMP_WORDS.iter().any(|w| name.split(|c: char| !c.is_alphanumeric()).any(|t| t == *w)) {
+            1
+        } else {
+            2
+        }
+    };
+    let mut others: Vec<&HostEntry> = hosts.iter().filter(|h| h.alias != this).collect();
+    others.sort_by_key(|h| rank(h));
+    others.into_iter().map(|h| h.alias.clone()).collect()
+}
+
 fn to_values(o: &ConnOptions) -> [String; 5] {
     [o.user.clone(), o.port.clone(), o.identity.clone(), o.jump.clone(), o.args.clone()]
 }
@@ -268,7 +299,7 @@ impl App {
         if let Some(i) = self.selected_host() {
             let entry = &self.hosts[i];
             let keys = self.ssh_dir.as_deref().map(scan_keys).unwrap_or_default();
-            let jumps = self.hosts.iter().map(|h| h.alias.clone()).filter(|a| *a != entry.alias).collect();
+            let jumps = jump_candidates(&self.hosts, &self.cfg, &entry.alias);
             let form = HostForm::new(&entry.alias, self.cfg.hosts.get(&entry.alias), entry, keys, jumps);
             self.popup_offset = (0, 0);
             self.mode = Mode::HostForm(Box::new(form));
