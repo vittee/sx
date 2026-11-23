@@ -100,6 +100,7 @@ connection only.
   The profile column then reads `default+2`.
 - `Ctrl-O` edits the connection options of the selected host.
   A host can keep several named options, such as `root` or `deploy via bastion`, and the form lists its keys.
+  `Ctrl-K` picks the identity file from the keys in `~/.ssh` and the jump host from the other hosts.
 - `Ctrl-L` picks one of the host's named options and connects with them.
 
 To sort, click a column header (click again to reverse),

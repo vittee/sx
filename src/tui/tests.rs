@@ -176,8 +176,40 @@ fn the_key_list_belongs_to_the_identity_field() {
     key(&mut a, KeyCode::Down);
     key(&mut a, KeyCode::Down);
     assert!(squash(&render(&mut a)).contains("^K pick key file"));
-    key(&mut a, KeyCode::Down); // on to the jump host: the hint goes away again
+    key(&mut a, KeyCode::Down); // on to the jump host: the same key picks a host
+    assert!(squash(&render(&mut a)).contains("^K pick jump host"));
+    key(&mut a, KeyCode::Down); // the extra args have no list: the hint goes away again
     assert!(!render(&mut a).contains("^K"));
+}
+
+#[test]
+fn ctrl_k_on_the_jump_host_lists_the_other_hosts_and_enter_takes_one() {
+    let (_t, mut a) = app();
+    ctrl(&mut a, 'o'); // the options of the first host
+    let host = a.selected_host().map(|i| a.hosts[i].alias.clone()).unwrap();
+    for _ in 0..3 {
+        key(&mut a, KeyCode::Down); // focus the jump host field
+    }
+    ctrl(&mut a, 'k');
+    let screen = render(&mut a);
+    assert!(!a.hits.form_keylist.is_empty(), "{screen}");
+    assert!(a.hits.form_keylist.iter().all(|(_, n)| *n != host), "the host itself is offered");
+    let (_, first) = a.hits.form_keylist[0].clone();
+    key(&mut a, KeyCode::Enter);
+    assert_eq!(a.jump_value(), Some(first));
+    assert!(a.identity_value().is_some_and(|v| v.is_empty()), "the identity field changed");
+}
+
+#[test]
+fn typing_narrows_the_jump_host_list() {
+    let (_t, mut a) = app();
+    ctrl(&mut a, 'o');
+    for _ in 0..3 {
+        key(&mut a, KeyCode::Down);
+    }
+    typed(&mut a, "zzz");
+    ctrl(&mut a, 'k');
+    assert!(matches!(&a.status, Some((m, true)) if m.contains("no host matches")), "{:?}", a.status);
 }
 
 #[test]

@@ -11,11 +11,13 @@ const LABELS: [&str; 5] = ["User", "Port", "Identity file", "Jump host", "Extra 
 const EXAMPLES: [&str; 5] = ["", "", "~/.ssh/id_ed25519", "bastion.example.com", ""];
 const PORT: usize = 1;
 const IDENTITY: usize = 2;
-/// Rows of the key list shown at once.
+const JUMP: usize = 3;
+/// Rows of the pick list (keys or hosts) shown at once.
 const KEY_ROWS: usize = 5;
-/// The third hint row. Its last hint shows only on the identity field, but the columns are sized
-/// for all of it, so the hints of the rows above do not move.
-const THIRD_ROW: [(&str, &str); 3] = [("^S", "save all"), ("^U", "clear field"), ("^K", "pick key file")];
+/// The third hint row. Its last hint shows only on the identity and jump host fields, but the columns
+/// are sized for the longest of it, so the hints of the rows above do not move.
+const THIRD_ROW: [(&str, &str); 3] = [("^S", "save all"), ("^U", "clear field"), ("^K", "pick jump host")];
+const PICK_KEY: (&str, &str) = ("^K", "pick key file");
 const LABEL_W: usize = 16;
 const DEFAULT: &str = "default";
 /// The colour of the options form, its picker, and the target of a host that has options.
@@ -44,7 +46,9 @@ pub(super) struct HostForm {
     renaming: bool,
     /// The private keys found in `~/.ssh`, as `~/.ssh/name`.
     keys: Vec<String>,
-    /// The row chosen in the open key list (Ctrl-K), counted in `key_matches`.
+    /// The other hosts, to pick a jump host from.
+    jumps: Vec<String>,
+    /// The row chosen in the open pick list (Ctrl-K), counted in `key_matches`.
     key_pick: Option<usize>,
 }
 
@@ -81,19 +85,28 @@ fn from_values(v: &[String; 5]) -> ConnOptions {
 }
 
 impl HostForm {
-    /// The keys that fit what is typed in the identity field.
-    fn key_matches(&self) -> Vec<&String> {
-        let typed = self.values[IDENTITY].trim().to_lowercase();
-        self.keys.iter().filter(|k| k.to_lowercase().contains(&typed)).collect()
+    /// What the focused field can be picked from: keys for the identity file, hosts for the jump host.
+    fn choices(&self) -> &[String] {
+        match self.focus {
+            IDENTITY => &self.keys,
+            JUMP => &self.jumps,
+            _ => &[],
+        }
     }
 
-    /// Puts the chosen key into the identity field and closes the list.
+    /// The choices that fit what is typed in the focused field.
+    fn key_matches(&self) -> Vec<&String> {
+        let typed = self.values[self.focus].trim().to_lowercase();
+        self.choices().iter().filter(|k| k.to_lowercase().contains(&typed)).collect()
+    }
+
+    /// Puts the chosen key or host into the focused field and closes the list.
     fn take_key(&mut self, key: &str) {
-        self.values[IDENTITY] = key.to_string();
+        self.values[self.focus] = key.to_string();
         self.key_pick = None;
     }
 
-    fn new(host: &str, prefs: Option<&config::HostPrefs>, entry: &HostEntry, keys: Vec<String>) -> HostForm {
+    fn new(host: &str, prefs: Option<&config::HostPrefs>, entry: &HostEntry, keys: Vec<String>, jumps: Vec<String>) -> HostForm {
         let p = prefs.cloned().unwrap_or_default();
         let mut hints: [String; 5] = EXAMPLES.map(|e| e.to_string());
         hints[0] = entry.user.clone().unwrap_or_default();
@@ -112,6 +125,7 @@ impl HostForm {
             confirming: false,
             renaming: false,
             keys,
+            jumps,
             key_pick: None,
         }
     }
@@ -254,7 +268,8 @@ impl App {
         if let Some(i) = self.selected_host() {
             let entry = &self.hosts[i];
             let keys = self.ssh_dir.as_deref().map(scan_keys).unwrap_or_default();
-            let form = HostForm::new(&entry.alias, self.cfg.hosts.get(&entry.alias), entry, keys);
+            let jumps = self.hosts.iter().map(|h| h.alias.clone()).filter(|a| *a != entry.alias).collect();
+            let form = HostForm::new(&entry.alias, self.cfg.hosts.get(&entry.alias), entry, keys, jumps);
             self.popup_offset = (0, 0);
             self.mode = Mode::HostForm(Box::new(form));
         }
@@ -367,7 +382,7 @@ impl App {
                 return;
             }
         }
-        let before = form.values[IDENTITY].clone();
+        let (field, before) = (form.focus, form.values[form.focus].clone());
         let n = LABELS.len();
         match k.code {
             KeyCode::Esc if form.want_close() => return,
@@ -395,11 +410,16 @@ impl App {
             },
             KeyCode::Char('n') if ctrl => form.naming = Some(String::new()),
             KeyCode::Char('d') if ctrl => form.delete_options(),
-            KeyCode::Char('k') if ctrl && form.focus == IDENTITY => {
-                if form.keys.is_empty() {
-                    self.fail("no private keys found in ~/.ssh".to_string());
+            KeyCode::Char('k') if ctrl && matches!(form.focus, IDENTITY | JUMP) => {
+                let (none, no_match) = if form.focus == IDENTITY {
+                    ("no private keys found in ~/.ssh", "no key in ~/.ssh matches what is typed")
+                } else {
+                    ("there are no other hosts to pick from", "no host matches what is typed")
+                };
+                if form.choices().is_empty() {
+                    self.fail(none.to_string());
                 } else if form.key_matches().is_empty() {
-                    self.fail("no key in ~/.ssh matches what is typed".to_string());
+                    self.fail(no_match.to_string());
                 } else {
                     form.key_pick = Some(0);
                 }
@@ -426,8 +446,8 @@ impl App {
         }
         if was_open {
             // Typing narrows the list and goes back to its first row. Any other key closes it.
-            let typed = matches!(k.code, KeyCode::Backspace | KeyCode::Char(_)) && form.values[IDENTITY] != before;
-            form.key_pick = (typed && form.focus == IDENTITY && !form.key_matches().is_empty()).then_some(0);
+            let typed = matches!(k.code, KeyCode::Backspace | KeyCode::Char(_)) && form.values[field] != before;
+            form.key_pick = (typed && form.focus == field && !form.key_matches().is_empty()).then_some(0);
         }
         self.mode = Mode::HostForm(Box::new(form));
     }
@@ -540,8 +560,12 @@ impl App {
         } else if form.naming.is_some() {
             [&[("Enter", if form.renaming { "rename" } else { "add" }), ("Esc", "cancel")], &[], &[]]
         } else {
-            // The key list belongs to the identity field, so its hint shows only there.
-            let third: &[(&str, &str)] = if form.focus == IDENTITY { &THIRD_ROW } else { &THIRD_ROW[..2] };
+            // The pick list belongs to the identity and jump host fields, so its hint shows only there.
+            let third: &[(&str, &str)] = match form.focus {
+                IDENTITY => &[THIRD_ROW[0], THIRD_ROW[1], PICK_KEY],
+                JUMP => &THIRD_ROW,
+                _ => &THIRD_ROW[..2],
+            };
             [
                 &[("Enter", "connect once"), ("Esc", "cancel"), ("Tab", "next field")],
                 &[("←/→", "switch"), ("^N", "new"), ("^R", "rename"), ("^D", "delete")],
@@ -582,12 +606,12 @@ impl App {
         self.hits.form_keys = key_hits;
         f.render_widget(Paragraph::new(lines), inner);
 
-        // The key list drops down under the identity field, over the rows below it.
+        // The pick list drops down under the focused field, over the rows below it.
         self.hits.form_keylist.clear();
         if let Some(sel) = form.key_pick {
             let matches = form.key_matches();
             let x = inner.x + 1 + LABEL_W as u16;
-            let list = Rect::new(x, inner.y + 2 + IDENTITY as u16, inner.width.saturating_sub(x - inner.x + 1), matches.len().min(KEY_ROWS) as u16);
+            let list = Rect::new(x, inner.y + 2 + form.focus as u16, inner.width.saturating_sub(x - inner.x + 1), matches.len().min(KEY_ROWS) as u16);
             if !matches.is_empty() && list.width > 0 {
                 let sel = sel.min(matches.len() - 1);
                 let first = (sel + 1).saturating_sub(KEY_ROWS);
@@ -773,6 +797,13 @@ impl App {
     pub(super) fn identity_value(&self) -> Option<String> {
         match &self.mode {
             Mode::HostForm(form) => Some(form.values[IDENTITY].clone()),
+            _ => None,
+        }
+    }
+
+    pub(super) fn jump_value(&self) -> Option<String> {
+        match &self.mode {
+            Mode::HostForm(form) => Some(form.values[JUMP].clone()),
             _ => None,
         }
     }
