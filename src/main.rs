@@ -9,6 +9,8 @@ mod log;
 mod payload;
 mod prompt;
 mod ssh_config;
+#[cfg(test)]
+mod testutil;
 mod tui;
 
 use std::env;

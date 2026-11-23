@@ -1,4 +1,5 @@
 use super::*;
+use crate::testutil::bash_at_least;
 
 fn setup() -> (tempfile::TempDir, Config) {
     let tmp = tempfile::tempdir().unwrap();
@@ -575,31 +576,6 @@ fn run_in_rc_after(before: &str, script: &str) -> Option<(String, String)> {
     child.stdin.take()?.write_all(format!("{before}\n{rc}\n{script}").as_bytes()).ok()?;
     let out = child.wait_with_output().ok()?;
     Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
-}
-
-/// Whether the `bash` the tests run is at least this version. macOS still ships 3.2, which has
-/// neither `${PS1@P}` (4.4) nor the readline settings the inputrc snippets use (6.3, bash 4.4).
-fn bash_at_least(major: u32, minor: u32) -> bool {
-    use std::io::Write;
-    let Ok(mut child) = std::process::Command::new("bash")
-        .arg("-s")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    else {
-        return false;
-    };
-    let Some(mut stdin) = child.stdin.take() else { return false };
-    let _ = stdin.write_all(b"echo ${BASH_VERSINFO[0]} ${BASH_VERSINFO[1]}
-");
-    drop(stdin);
-    let Ok(out) = child.wait_with_output() else { return false };
-    let text = String::from_utf8_lossy(&out.stdout).to_string();
-    // A launcher that is not a shell (the WSL `bash.exe` with no distribution) prints a message instead.
-    let mut v = text.split_whitespace().map(|n| n.parse::<u32>());
-    let (Some(Ok(a)), Some(Ok(b))) = (v.next(), v.next()) else { return false };
-    (a, b) >= (major, minor)
 }
 
 #[test]
