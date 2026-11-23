@@ -74,10 +74,12 @@ Sleep 1.5s
 Down 2
 Sleep 1.5s
 Down 2
+Sleep 1s
+Enter
 Sleep 2s
 Left
 Sleep 500ms
-Type "q"
+Escape
 Sleep 1s
 Type "clear"
 Enter
