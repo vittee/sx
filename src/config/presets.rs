@@ -1,5 +1,5 @@
 //! Ready-made snippets that `sx init` creates, all off until you turn them on in Profiles: the vim
-//! ones and the shell ones (`colorterm`, `no-history`, `man-colors` and more).
+//! ones and the shell ones (`colorterm`, `no-history`, `man-colors` and more) and the readline ones.
 //!
 //! `vim -u` skips the server's own vimrc, and the enabled `.vim` snippets are joined in name order
 //! into one config, so these are small layers. A later name wins when two set the same option.
@@ -199,6 +199,49 @@ pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
         ("man-colors", MAN_COLORS.to_string()),
         ("no-history", NO_HISTORY.to_string()),
         ("utf8", UTF8.to_string()),
+    ]
+}
+
+const HISTORY_SEARCH: &str = r#"# sx history-search: Up and Down search the history for what you typed so far
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+"\eOA": history-search-backward
+"\eOB": history-search-forward
+"#;
+
+const KEYS_FIX: &str = r#"# sx keys-fix: Home, End, Delete and Ctrl-Left/Right work the same on every server
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+"\e[7~": beginning-of-line
+"\e[8~": end-of-line
+"\e[H": beginning-of-line
+"\e[F": end-of-line
+"\eOH": beginning-of-line
+"\eOF": end-of-line
+"\e[3~": delete-char
+"\e[1;5C": forward-word
+"\e[1;5D": backward-word
+"\e[5C": forward-word
+"\e[5D": backward-word
+"#;
+
+const SUDO_ESC: &str = r#"# sx sudo-esc: press Esc twice to put sudo in front of the command line
+# Only with emacs keys: in vi mode Esc leaves insert mode and a second one must not be taken.
+# Esc Esc starts longer sequences too (Alt with an arrow key), so readline waits for more keys.
+# The default wait is half a second, and 100 ms is enough for a key press that arrives in one piece.
+$if mode=emacs
+"\e\e": "\C-asudo \C-e"
+set keyseq-timeout 100
+$endif
+"#;
+
+/// Readline key bindings created on the first run. They are `.inputrc` snippets, so `sx` applies them
+/// with `bind`, one line at a time, when the shell starts.
+pub(super) fn inputrc_presets() -> Vec<(&'static str, String)> {
+    vec![
+        ("history-search.inputrc", HISTORY_SEARCH.to_string()),
+        ("keys-fix.inputrc", KEYS_FIX.to_string()),
+        ("sudo-esc.inputrc", SUDO_ESC.to_string()),
     ]
 }
 

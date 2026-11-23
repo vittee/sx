@@ -209,13 +209,18 @@ Up-arrow history still works during the session.
 These small snippets are also created off, and `sx init --presets` adds any that are missing.
 They change only this shell, so nothing is written on the server.
 Turn on the ones you want in Profiles.
+The key bindings are `.inputrc` snippets, which `sx` applies with `bind` when the shell starts.
+They use readline `$if` rules where the setting depends on the readline version or the editing mode.
 
 | Snippet | What it gives you |
 |---|---|
+| `history-search.inputrc` | Up and Down search the history for what you typed so far |
 | `man-colors` | colored man pages, and `less` keeps colors and ignores case in searches |
 | `cmd-colors` | color for `ls`, `grep` and `diff`, only where the server supports it |
 | `dir-keys` | `Alt-Up` goes to the parent directory, `Alt-Left` and `Alt-Right` go back and forward through the directories you visited. What you had typed goes to the kill ring, `Ctrl-Y` brings it back |
+| `keys-fix.inputrc` | Home, End, Delete and Ctrl-Left/Right work on every server |
 | `utf8` | switches to a UTF-8 locale when the shell is not in one, so box drawing and accents show |
+| `sudo-esc.inputrc` | `Esc` twice puts `sudo` in front of the command line (emacs keys only, since in vi mode `Esc` leaves insert mode). It also shortens the wait for a longer key sequence from 500 to 100 ms (`keyseq-timeout`), so `Esc Esc` does not lag |
 
 ### Prompt themes
 
