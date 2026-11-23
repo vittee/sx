@@ -801,6 +801,24 @@ fn only_the_checkbox_toggles_a_snippet_and_the_name_selects_it() {
 }
 
 #[test]
+fn double_clicking_a_snippet_name_opens_it_in_the_snippets_tab() {
+    let (_t, mut app, rows) = grid_app();
+    let c = app.hits.chk_list;
+    let w = app.hits.chk_colw;
+    let name = format!("snip-{rows:02}");
+    click(&mut app, c.x + w + 1, c.y); // a checkbox twice only toggles
+    click(&mut app, c.x + w + 1, c.y);
+    assert_eq!(app.tab, Tab::Profiles);
+    assert!(!app.cfg.profiles["default"].snippets.contains(&name));
+    click(&mut app, c.x + w + 6, c.y);
+    assert_eq!(app.tab, Tab::Profiles, "one click on the name only selects");
+    click(&mut app, c.x + w + 6, c.y);
+    assert_eq!(app.tab, Tab::Snippets);
+    assert_eq!(app.selected_snippet().as_deref(), Some(name.as_str()));
+    assert_eq!(app.editor_name.as_deref(), Some(name.as_str()));
+}
+
+#[test]
 fn the_wheel_moves_one_snippet_and_crosses_to_the_next_column() {
     let (_t, mut app, rows) = grid_app();
     let c = app.hits.chk_list;

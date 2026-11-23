@@ -147,6 +147,15 @@ impl App {
         self.save_cfg();
     }
 
+    /// Shows grid item `i` in the Snippets tab, selected in the list and open in the editor.
+    fn open_snippet(&mut self, i: usize) {
+        let Some(name) = self.grid_items().get(i).cloned() else { return };
+        self.switch_tab(Tab::Snippets);
+        if let Some(at) = self.snippets.iter().position(|s| *s == name) {
+            self.select_snippet(at);
+        }
+    }
+
     /// Encoded payload size of `profile`. Building it reads every snippet and gzips, so the result
     /// is kept until the config or a snippet changes (`save_cfg`, `flush_editor`, `reload_snippets`).
     pub(super) fn payload_size(&mut self, profile: &str) -> Option<usize> {
@@ -280,6 +289,8 @@ impl App {
                 // the checkbox toggles the snippet, the name only selects it
                 if (x - clist.x) % colw < 4 {
                     self.toggle_checked();
+                } else if self.is_double_click(Tab::Profiles, i) {
+                    self.open_snippet(i);
                 }
             }
         }
