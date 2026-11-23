@@ -443,10 +443,10 @@ fn delete_snippet_needs_confirmation_and_cleans_profiles() {
     app.switch_tab(Tab::Snippets);
     ctrl(&mut app, 'd');
     key(&mut app, KeyCode::Char('n')); // cancel
-    assert_eq!(app.snippets, ["20-aliases", "cmd-colors", "colorterm", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["20-aliases", "cmd-colors", "colorterm", "completion-colors.inputrc", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "menu-complete.inputrc", "no-bell.inputrc", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     ctrl(&mut app, 'd');
     key(&mut app, KeyCode::Char('y'));
-    assert_eq!(app.snippets, ["cmd-colors", "colorterm", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["cmd-colors", "colorterm", "completion-colors.inputrc", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "menu-complete.inputrc", "no-bell.inputrc", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert!(app.cfg.profiles["default"].snippets.is_empty());
 }
 
@@ -458,7 +458,7 @@ fn duplicate_snippet_prompts_with_a_copy_name_and_copies_the_text() {
     assert!(matches!(&app.mode, Mode::Input(InputKind::DuplicateSnippet(f), b) if f == "20-aliases" && b == "20-aliases-copy"));
     assert!(render(&mut app).contains("copy of snippet 20-aliases as: 20-aliases-copy"));
     key(&mut app, KeyCode::Enter);
-    assert_eq!(app.snippets, ["20-aliases", "20-aliases-copy", "cmd-colors", "colorterm", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["20-aliases", "20-aliases-copy", "cmd-colors", "colorterm", "completion-colors.inputrc", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "menu-complete.inputrc", "no-bell.inputrc", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert_eq!(app.editor_name.as_deref(), Some("20-aliases-copy"));
     assert_eq!(
         config::read_snippet(&app.dir, "20-aliases-copy").unwrap(),
@@ -502,7 +502,7 @@ fn duplicate_snippet_rejects_existing_or_invalid_names_and_can_be_cancelled() {
     assert!(app.status.as_ref().is_some_and(|s| s.1), "{:?}", app.status);
     ctrl(&mut app, 'y');
     key(&mut app, KeyCode::Esc);
-    assert_eq!(app.snippets, ["20-aliases", "cmd-colors", "colorterm", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(app.snippets, ["20-aliases", "cmd-colors", "colorterm", "completion-colors.inputrc", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "menu-complete.inputrc", "no-bell.inputrc", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert!(matches!(app.mode, Mode::Normal));
 }
 

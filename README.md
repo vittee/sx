@@ -214,12 +214,15 @@ They use readline `$if` rules where the setting depends on the readline version 
 
 | Snippet | What it gives you |
 |---|---|
+| `completion-colors.inputrc` | Tab completion lists are colored with your `LS_COLORS`, and the part you typed is highlighted. Turn on `cmd-colors` too if the server has no `LS_COLORS`. Old readline skips what it does not know |
 | `history-search.inputrc` | Up and Down search the history for what you typed so far |
 | `man-colors` | colored man pages, and `less` keeps colors and ignores case in searches |
 | `cmd-colors` | color for `ls`, `grep` and `diff`, only where the server supports it |
 | `dir-keys` | `Alt-Up` goes to the parent directory, `Alt-Left` and `Alt-Right` go back and forward through the directories you visited. What you had typed goes to the kill ring, `Ctrl-Y` brings it back |
 | `keys-fix.inputrc` | Home, End, Delete and Ctrl-Left/Right work on every server |
 | `utf8` | switches to a UTF-8 locale when the shell is not in one, so box drawing and accents show |
+| `menu-complete.inputrc` | `Tab` cycles through the matches and `Shift-Tab` goes back. The first `Tab` still completes the part they share |
+| `no-bell.inputrc` | no beep or window flash when a completion fails or the cursor hits an edge |
 | `sudo-esc.inputrc` | `Esc` twice puts `sudo` in front of the command line (emacs keys only, since in vi mode `Esc` leaves insert mode). It also shortens the wait for a longer key sequence from 500 to 100 ms (`keyseq-timeout`), so `Esc Esc` does not lag |
 
 ### Prompt themes

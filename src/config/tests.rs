@@ -10,7 +10,7 @@ fn setup() -> (tempfile::TempDir, Config) {
 #[test]
 fn first_run_creates_samples_and_default_profile() {
     let (tmp, cfg) = setup();
-    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "cmd-colors", "colorterm", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "cmd-colors", "colorterm", "completion-colors.inputrc", "dir-keys", "history-search.inputrc", "keys-fix.inputrc", "man-colors", "menu-complete.inputrc", "no-bell.inputrc", "no-history", "sudo-esc.inputrc", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert_eq!(cfg.profiles["default"].snippets, ["20-aliases"]);
     assert_eq!(cfg.profiles["default"].prompt.as_deref(), Some(prompt::DEFAULT_THEME));
     assert!(!ensure_initialized(tmp.path()).unwrap().1);
@@ -525,7 +525,7 @@ fn no_history_is_created_off_and_unsets_histfile_when_turned_on() {
 #[test]
 fn every_shell_preset_is_created_off_and_comes_back_when_deleted() {
     let (tmp, cfg) = setup();
-    let names = ["cmd-colors", "dir-keys", "man-colors", "utf8", "history-search.inputrc", "keys-fix.inputrc", "sudo-esc.inputrc"];
+    let names = ["cmd-colors", "dir-keys", "man-colors", "utf8", "completion-colors.inputrc", "history-search.inputrc", "keys-fix.inputrc", "menu-complete.inputrc", "no-bell.inputrc", "sudo-esc.inputrc"];
     let rc = build_rc(tmp.path(), &cfg, "default");
     for name in names {
         let text = read_snippet(tmp.path(), name).unwrap();
@@ -633,11 +633,11 @@ fn dir_keys_go_back_and_forward_through_the_directories_you_visited() {
 fn inputrc_snippets_are_applied_line_by_line_with_their_if_rules() {
     use std::io::Write;
     let (tmp, mut cfg) = setup();
-    for n in ["history-search.inputrc", "sudo-esc.inputrc"] {
+    for n in ["history-search.inputrc", "completion-colors.inputrc", "menu-complete.inputrc", "no-bell.inputrc", "sudo-esc.inputrc"] {
         cfg.toggle_snippet("default", n);
     }
     let rc = build_rc(tmp.path(), &cfg, "default");
-    let script = "bind -P | grep -a 'history-search-backward can be found'; bind -s | grep -a -c asudo
+    let script = "bind -P | grep -a 'history-search-backward can be found'; bind -P | grep -a 'menu-complete-backward can be found'; bind -v | grep -a 'menu-complete-display-prefix'; bind -v | grep -a 'bell-style'; bind -v | grep -a 'colored-stats'; bind -s | grep -a -c asudo
 ";
     let Ok(mut child) = std::process::Command::new("bash")
         .arg("--norc")
@@ -654,6 +654,9 @@ fn inputrc_snippets_are_applied_line_by_line_with_their_if_rules() {
 {script}").as_bytes()).unwrap();
     let out = String::from_utf8_lossy(&child.wait_with_output().unwrap().stdout).replace('\r', "");
     assert!(out.contains("history-search-backward can be found on"), "{out}");
+    assert!(out.contains("menu-complete-backward can be found on") && out.contains("set menu-complete-display-prefix on"), "{out}");
+    assert!(out.contains("set bell-style none"), "{out}");
+    assert!(out.contains("set colored-stats on"), "the version rule is true: {out}");
     assert!(out.lines().any(|l| l.trim_end().ends_with('1')), "the emacs rule is true, so sudo-esc is bound: {out}");
 }
 

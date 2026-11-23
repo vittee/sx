@@ -202,6 +202,17 @@ pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
     ]
 }
 
+const COMPLETION_COLORS: &str = "# sx completion-colors: Tab completion lists use your LS_COLORS, and the part you typed is colored
+# The server needs LS_COLORS for the first one: turn on cmd-colors if it has none.
+# Readline older than 6.3 (7.0 for the prefix) does not know these, so they are skipped there.
+$if version >= 6.3
+set colored-stats on
+$endif
+$if version >= 7.0
+set colored-completion-prefix on
+$endif
+";
+
 const HISTORY_SEARCH: &str = r#"# sx history-search: Up and Down search the history for what you typed so far
 "\e[A": history-search-backward
 "\e[B": history-search-forward
@@ -225,6 +236,19 @@ const KEYS_FIX: &str = r#"# sx keys-fix: Home, End, Delete and Ctrl-Left/Right w
 "\e[5D": backward-word
 "#;
 
+const MENU_COMPLETE: &str = r#"# sx menu-complete: Tab cycles through the matches, Shift-Tab goes back
+# The first Tab still completes the part they share, and the next ones cycle.
+"\t": menu-complete
+"\e[Z": menu-complete-backward
+$if version >= 6.3
+set menu-complete-display-prefix on
+$endif
+"#;
+
+const NO_BELL: &str = "# sx no-bell: no beep or flash when a completion fails or the cursor hits an edge
+set bell-style none
+";
+
 const SUDO_ESC: &str = r#"# sx sudo-esc: press Esc twice to put sudo in front of the command line
 # Only with emacs keys: in vi mode Esc leaves insert mode and a second one must not be taken.
 # Esc Esc starts longer sequences too (Alt with an arrow key), so readline waits for more keys.
@@ -239,8 +263,11 @@ $endif
 /// with `bind`, one line at a time, when the shell starts.
 pub(super) fn inputrc_presets() -> Vec<(&'static str, String)> {
     vec![
+        ("completion-colors.inputrc", COMPLETION_COLORS.to_string()),
         ("history-search.inputrc", HISTORY_SEARCH.to_string()),
         ("keys-fix.inputrc", KEYS_FIX.to_string()),
+        ("menu-complete.inputrc", MENU_COMPLETE.to_string()),
+        ("no-bell.inputrc", NO_BELL.to_string()),
         ("sudo-esc.inputrc", SUDO_ESC.to_string()),
     ]
 }
