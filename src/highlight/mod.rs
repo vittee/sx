@@ -172,6 +172,166 @@ fn vim_line(c: &[char]) -> Vec<Kind> {
     out
 }
 
+/// Classifies readline settings (`.inputrc`), line by line. `#` starts a comment, `$if`, `$else`,
+/// `$endif` and `$include` are keywords, a `set` line has a variable and a value, and a key binding has
+/// the key (a quoted sequence or a name such as `Control-o`) before the colon and a function name or a
+/// quoted macro after it. Escapes inside quotes (`\e`, `\C-a`, `\t`) are operators. Not a parser.
+pub fn highlight_inputrc(lines: &[String]) -> Vec<Vec<Kind>> {
+    lines.iter().map(|l| inputrc_line(&l.chars().collect::<Vec<_>>())).collect()
+}
+
+fn inputrc_line(c: &[char]) -> Vec<Kind> {
+    let mut out = vec![Kind::Plain; c.len()];
+    let start = c.iter().position(|x| !x.is_whitespace()).unwrap_or(c.len());
+    match c.get(start) {
+        None => {}
+        Some('#') => out[start..].fill(Kind::Comment),
+        Some('$') => inputrc_directive(c, start, &mut out),
+        Some(_) => {
+            let word_end = start + c[start..].iter().take_while(|x| x.is_alphabetic()).count();
+            let is_set = c[start..word_end].iter().collect::<String>() == "set" && c.get(word_end).is_some_and(|x| x.is_whitespace());
+            if is_set {
+                inputrc_set(c, start, word_end, &mut out);
+            } else {
+                inputrc_binding(c, start, &mut out);
+            }
+        }
+    }
+    out
+}
+
+/// `$if mode=emacs`, `$if term=xterm`, `$if version >= 7.0`, `$else`, `$endif`, `$include path`.
+fn inputrc_directive(c: &[char], start: usize, out: &mut [Kind]) {
+    let mut i = start + 1;
+    while i < c.len() && c[i].is_alphabetic() {
+        i += 1;
+    }
+    out[start..i].fill(Kind::Keyword);
+    if c[start..i].iter().collect::<String>() == "$include" {
+        return;
+    }
+    while i < c.len() {
+        let ch = c[i];
+        if ch.is_ascii_digit() {
+            let n = c[i..].iter().take_while(|x| x.is_ascii_digit() || **x == '.').count();
+            out[i..i + n].fill(Kind::Number);
+            i += n;
+        } else if matches!(ch, '=' | '<' | '>' | '!') {
+            out[i] = Kind::Op;
+            i += 1;
+        } else if ch.is_alphabetic() {
+            let n = c[i..].iter().take_while(|x| x.is_alphanumeric() || matches!(x, '-' | '_')).count();
+            let word: String = c[i..i + n].iter().collect();
+            if matches!(word.as_str(), "mode" | "term" | "version" | "application" | "variable") {
+                out[i..i + n].fill(Kind::Var);
+            }
+            i += n;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// `set variable value`: the variable is a variable, `on` and `off` are builtins, numbers are numbers.
+fn inputrc_set(c: &[char], start: usize, word_end: usize, out: &mut [Kind]) {
+    out[start..word_end].fill(Kind::Keyword);
+    let mut i = word_end;
+    let mut first = true;
+    while i < c.len() {
+        if c[i].is_whitespace() {
+            i += 1;
+            continue;
+        }
+        let n = c[i..].iter().take_while(|x| !x.is_whitespace()).count();
+        let word: String = c[i..i + n].iter().collect();
+        let kind = if first {
+            Kind::Var
+        } else if matches!(word.to_ascii_lowercase().as_str(), "on" | "off") {
+            Kind::Builtin
+        } else if word.chars().all(|x| x.is_ascii_digit()) {
+            Kind::Number
+        } else {
+            Kind::Plain
+        };
+        out[i..i + n].fill(kind);
+        first = false;
+        i += n;
+    }
+}
+
+/// `"\e[A": history-search-backward`, `Control-o: kill-line`, `"\e\e": "\C-asudo \C-e"`.
+fn inputrc_binding(c: &[char], start: usize, out: &mut [Kind]) {
+    let mut i = start;
+    if c[i] == '"' {
+        i = inputrc_quoted(c, i, out);
+    } else {
+        let n = c[i..].iter().take_while(|x| **x != ':' && !x.is_whitespace()).count();
+        out[i..i + n].fill(Kind::Var);
+        i += n;
+    }
+    while i < c.len() && c[i].is_whitespace() {
+        i += 1;
+    }
+    if c.get(i) != Some(&':') {
+        return;
+    }
+    out[i] = Kind::Op;
+    i += 1;
+    while i < c.len() && c[i].is_whitespace() {
+        i += 1;
+    }
+    if c.get(i) == Some(&'"') {
+        inputrc_quoted(c, i, out);
+    } else {
+        let n = c[i..].iter().take_while(|x| !x.is_whitespace()).count();
+        out[i..i + n].fill(Kind::Func);
+    }
+}
+
+/// Marks the quoted text that starts at `start` and returns the index after it.
+fn inputrc_quoted(c: &[char], start: usize, out: &mut [Kind]) -> usize {
+    out[start] = Kind::Str;
+    let mut i = start + 1;
+    while i < c.len() {
+        match c[i] {
+            '"' => {
+                out[i] = Kind::Str;
+                return i + 1;
+            }
+            '\\' => {
+                let n = inputrc_escape_len(&c[i..]);
+                out[i..i + n].fill(Kind::Op);
+                i += n;
+            }
+            _ => {
+                out[i] = Kind::Str;
+                i += 1;
+            }
+        }
+    }
+    i
+}
+
+/// Length of the escape that starts with the backslash at `c[0]`: `\e`, `\C-a`, `\M-x`, `\M-\C-a`,
+/// `\x1b` or `\033`.
+fn inputrc_escape_len(c: &[char]) -> usize {
+    let rest = &c[1..];
+    let n = match rest.first() {
+        None => 0,
+        Some('C' | 'M') if rest.get(1) == Some(&'-') => {
+            if rest.get(2) == Some(&'\\') {
+                2 + inputrc_escape_len(&rest[2..])
+            } else {
+                3.min(rest.len())
+            }
+        }
+        Some('x') => 1 + rest[1..].iter().take(2).take_while(|x| x.is_ascii_hexdigit()).count(),
+        Some(d) if d.is_digit(8) => rest.iter().take(3).take_while(|x| x.is_digit(8)).count(),
+        Some(_) => 1,
+    };
+    1 + n
+}
+
 const KEYWORDS: &[&str] = &[
     "if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "in", "function",
     "select", "time", "!", "{", "}", "[[", "]]",

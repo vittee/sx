@@ -36,14 +36,14 @@ pub(super) fn highlighted_line(text: &str, kinds: &[highlight::Kind], left: usiz
     Line::from(spans)
 }
 
-/// Color of a snippet name by its kind: shell green, vim cyan, tmux yellow, inputrc blue, prompt
+/// Color of a snippet name by its kind: shell green, vim cyan, tmux yellow, inputrc light blue, prompt
 /// magenta.
 pub(super) fn kind_color(name: &str) -> Color {
     match config::snippet_kind(name) {
         config::SnippetKind::Shell => Color::Green,
         config::SnippetKind::Vim => Color::Cyan,
         config::SnippetKind::Tmux => Color::Yellow,
-        config::SnippetKind::Inputrc => Color::Blue,
+        config::SnippetKind::Inputrc => Color::LightBlue,
         config::SnippetKind::Prompt => Color::Magenta,
     }
 }
@@ -282,10 +282,13 @@ impl App {
             config::snippet_kind(n) == config::SnippetKind::Prompt && !prompt::is_script(&text)
         });
         let is_vim = self.editor_name.as_deref().is_some_and(|n| config::snippet_kind(n) == config::SnippetKind::Vim);
+        let is_inputrc = self.editor_name.as_deref().is_some_and(|n| config::snippet_kind(n) == config::SnippetKind::Inputrc);
         let kinds = if is_shell {
             highlight::highlight(&self.editor.lines)
         } else if is_vim {
             highlight::highlight_vim(&self.editor.lines)
+        } else if is_inputrc {
+            highlight::highlight_inputrc(&self.editor.lines)
         } else if is_ps1 {
             highlight::highlight_ps1(&self.editor.lines)
         } else {

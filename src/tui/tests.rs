@@ -1249,17 +1249,17 @@ fn snippet_names_are_colored_by_kind() {
     }
     app.reload_snippets(None);
     app.switch_tab(Tab::Snippets);
-    let mut term = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    let mut term = Terminal::new(TestBackend::new(100, 40)).unwrap();
     term.draw(|f| app.draw(f)).unwrap();
     let list = app.hits.snip_list;
     let buf = term.backend().buffer();
     for (i, name) in app.snippets.iter().enumerate() {
         let want = match name.as_str() {
-            "20-aliases" | "colorterm" | "no-history" => Color::Green,
             "t.tmux" => Color::Yellow,
-            "i.inputrc" => Color::Blue,
+            n if n.ends_with(".inputrc") => Color::LightBlue,
             "p.prompt" => Color::Magenta,
-            _ => Color::Cyan, // the vim presets
+            n if n.ends_with(".vim") => Color::Cyan, // the vim presets
+            _ => Color::Green, // shell snippets
         };
         assert_eq!(buf[(list.x, list.y + i as u16)].fg, want, "{name}");
     }

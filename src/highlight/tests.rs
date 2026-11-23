@@ -185,3 +185,75 @@ fn vim_highlighting_covers_every_character() {
         assert_eq!(vim(src).len(), src.chars().count(), "{src}");
     }
 }
+
+fn inputrc(src: &str) -> Vec<Kind> {
+    highlight_inputrc(&[src.to_string()]).remove(0)
+}
+
+fn inputrc_kind_of(src: &str, needle: &str) -> Vec<Kind> {
+    let chars: Vec<char> = src.chars().collect();
+    let n: Vec<char> = needle.chars().collect();
+    let p = chars.windows(n.len()).position(|w| w == &n[..]).unwrap();
+    inputrc(src)[p..p + n.len()].to_vec()
+}
+
+#[test]
+fn inputrc_comments_and_directives() {
+    assert!(inputrc("# sx keys").iter().all(|k| *k == Kind::Comment));
+    assert!(inputrc("  # indented")[2..].iter().all(|k| *k == Kind::Comment));
+    let src = "$if mode=emacs";
+    assert!(inputrc_kind_of(src, "$if").iter().all(|k| *k == Kind::Keyword));
+    assert!(inputrc_kind_of(src, "mode").iter().all(|k| *k == Kind::Var));
+    assert_eq!(inputrc_kind_of(src, "="), [Kind::Op]);
+    let src = "$if version >= 7.0";
+    assert!(inputrc_kind_of(src, "version").iter().all(|k| *k == Kind::Var));
+    assert!(inputrc_kind_of(src, ">=").iter().all(|k| *k == Kind::Op));
+    assert!(inputrc_kind_of(src, "7.0").iter().all(|k| *k == Kind::Number));
+    assert!(inputrc("$endif").iter().all(|k| *k == Kind::Keyword));
+    assert!(inputrc("$else").iter().all(|k| *k == Kind::Keyword));
+}
+
+#[test]
+fn inputrc_set_lines() {
+    let src = "set colored-stats on";
+    assert!(inputrc_kind_of(src, "set").iter().all(|k| *k == Kind::Keyword));
+    assert!(inputrc_kind_of(src, "colored-stats").iter().all(|k| *k == Kind::Var));
+    assert!(inputrc_kind_of(src, "on").iter().all(|k| *k == Kind::Builtin));
+    assert!(inputrc_kind_of("set completion-query-items 200", "200").iter().all(|k| *k == Kind::Number));
+    assert!(inputrc_kind_of("set keymap vi-insert", "vi-insert").iter().all(|k| *k == Kind::Plain));
+    // `settings` is not a `set` line
+    assert!(inputrc("settings: x")[..8].iter().all(|k| *k == Kind::Var));
+}
+
+#[test]
+fn inputrc_key_bindings() {
+    let src = r#""\e[1;5C": forward-word"#;
+    assert_eq!(inputrc(src)[0], Kind::Str);
+    assert!(inputrc_kind_of(src, r"\e").iter().all(|k| *k == Kind::Op));
+    assert_eq!(inputrc_kind_of(src, "[1;5C"), [Kind::Str; 5]);
+    assert_eq!(inputrc_kind_of(src, ":"), [Kind::Op]);
+    assert!(inputrc_kind_of(src, "forward-word").iter().all(|k| *k == Kind::Func));
+    let src = r#""\C-x\C-r": re-read-init-file"#;
+    assert!(inputrc_kind_of(src, r"\C-x").iter().all(|k| *k == Kind::Op));
+    assert!(inputrc_kind_of(src, r"\C-r").iter().all(|k| *k == Kind::Op));
+    assert!(inputrc_kind_of("Control-o: kill-line", "Control-o").iter().all(|k| *k == Kind::Var));
+    assert!(inputrc_kind_of(r#""\M-\C-a": x"#, r"\M-\C-a").iter().all(|k| *k == Kind::Op));
+    assert!(inputrc_kind_of(r#""\x1b[A": x"#, r"\x1b").iter().all(|k| *k == Kind::Op));
+}
+
+#[test]
+fn inputrc_macros_are_strings_with_escapes() {
+    let src = r#""\e\e": "\C-asudo \C-e""#;
+    let k = inputrc(src);
+    let at = src.find("sudo").unwrap();
+    assert_eq!(&k[at..at + 5], [Kind::Str; 5]);
+    assert!(inputrc_kind_of(src, r"\C-a").iter().all(|k| *k == Kind::Op));
+    assert_eq!(*k.last().unwrap(), Kind::Str);
+}
+
+#[test]
+fn inputrc_highlighting_covers_every_character_even_when_cut_short() {
+    for src in ["", "$", "$if", "set", "set ", r#"""#, r#""\"#, r#""\e"#, r#""\C-"#, r#""\M-\"#, r#""a": "#, ":", "x:", r#""\x"#, "# ", "$include /etc/inputrc"] {
+        assert_eq!(inputrc(src).len(), src.chars().count(), "{src}");
+    }
+}
