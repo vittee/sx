@@ -98,7 +98,7 @@ fn vim_tmux_and_inputrc_snippets_become_shell_without_writing_files() {
     assert!(rc.contains("vim() { command vim -u <(__sx_vimrc) \"$@\"; }"), "{rc}");
     assert!(rc.contains("nvim() { command nvim -u <(__sx_vimrc) \"$@\"; }"), "{rc}");
     assert!(rc.contains("tmux() { command tmux -f <(__sx_tmuxconf) \"$@\"; }"), "{rc}");
-    assert!(rc.contains("bind -f /dev/stdin <<'SX_EOF_INPUTRC'\nset bell-style none\nSX_EOF_INPUTRC\n"), "{rc}");
+    assert!(rc.contains("bind \"$__sx_l\" 2>/dev/null; done <<'SX_EOF_INPUTRC'\nset bell-style none\nSX_EOF_INPUTRC\nunset __sx_l\n"), "{rc}");
 }
 
 #[test]

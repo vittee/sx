@@ -105,8 +105,10 @@ pub(super) fn wrap_snippet(kind: SnippetKind, text: &str) -> String {
     let tag = heredoc_tag(base, text);
     let nl = if text.ends_with('\n') { "" } else { "\n" };
     if kind == SnippetKind::Inputrc {
-        // Applied once, when the shell starts.
-        return format!("bind -f /dev/stdin <<'{tag}'\n{text}{nl}{tag}\n");
+        // Applied once, when the shell starts, one `bind` per line. `bind -f /dev/stdin` would read
+        // nothing: readline sizes the file first, and bash 5.1 and newer give a here-document as a
+        // pipe, whose size is 0. `bind` also takes the `$if` rules, one line at a time.
+        return format!("while IFS= read -r __sx_l; do [ -n \"$__sx_l\" ] && bind \"$__sx_l\" 2>/dev/null; done <<'{tag}'\n{text}{nl}{tag}\nunset __sx_l\n");
     }
     let flag = if kind == SnippetKind::Tmux { "-f" } else { "-u" };
     let mut out = format!("{func}() {{ cat <<'{tag}'\n{text}{nl}{tag}\n}}\n");

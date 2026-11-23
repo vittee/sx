@@ -2,7 +2,7 @@
 //!   snippets/<name>.sh        rc pieces, one file each (edited from the TUI)
 //!   snippets/<name>.vim       a vimrc, used by `vim`/`nvim` on the server (see [`SnippetKind`])
 //!   snippets/<name>.tmux      a tmux config, used by `tmux` on the server
-//!   snippets/<name>.inputrc   readline settings, loaded with `bind -f`
+//!   snippets/<name>.inputrc   readline settings, applied with `bind` when the shell starts
 //!   snippets/<name>.prompt    your own prompt theme, listed next to the built-in ones
 //!   config.toml               profiles (which snippets), per-host preferences
 //!   history.tsv               connection history (see `history.rs`)

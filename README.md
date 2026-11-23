@@ -164,7 +164,7 @@ the server:
 | `x.sh` (or just `x`) | sourced as shell |
 | `x.vim` | `vim` and `nvim` run with `-u` on this config, through process substitution |
 | `x.tmux` | `tmux` runs with `-f` on this config, all enabled `.tmux` snippets joined like vim |
-| `x.inputrc` | loaded once with `bind -f` |
+| `x.inputrc` | applied once with `bind`, one line at a time, so `$if` rules work |
 | `x.prompt` | not sent as a snippet: it is a prompt theme you can pick in Profiles, see below |
 
 ### Vim presets
