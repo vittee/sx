@@ -1,5 +1,5 @@
 //! Ready-made snippets that `sx init` creates, all off until you turn them on in Profiles: the vim
-//! ones, `colorterm` and `no-history`.
+//! ones and the shell ones (`colorterm`, `no-history`, `man-colors` and more).
 //!
 //! `vim -u` skips the server's own vimrc, and the enabled `.vim` snippets are joined in name order
 //! into one config, so these are small layers. A later name wins when two set the same option.
@@ -111,13 +111,50 @@ const NO_HISTORY: &str = "# sx no-history: this shell does not write ~/.bash_his
 unset HISTFILE
 ";
 
+const MAN_COLORS: &str = r#"# sx man-colors: colored man pages, and less keeps colors and ignores case when searching
+export GROFF_NO_SGR=1
+export LESS='-iR'
+export LESS_TERMCAP_mb=$'\e[1;31m'
+export LESS_TERMCAP_md=$'\e[1;36m'
+export LESS_TERMCAP_me=$'\e[0m'
+export LESS_TERMCAP_so=$'\e[1;33;44m'
+export LESS_TERMCAP_se=$'\e[0m'
+export LESS_TERMCAP_us=$'\e[1;32m'
+export LESS_TERMCAP_ue=$'\e[0m'
+"#;
+
+const CMD_COLORS: &str = r#"# sx cmd-colors: color for ls, grep and diff when the output is a terminal (only what the server supports)
+export CLICOLOR=1
+[ -n "${LS_COLORS-}" ] || { command -v dircolors >/dev/null 2>&1 && eval "$(dircolors -b)"; }
+ls --color=auto / >/dev/null 2>&1 && alias ls='ls --color=auto'
+echo x | grep --color=auto -q x 2>/dev/null && alias grep='grep --color=auto'
+diff --color=auto /dev/null /dev/null >/dev/null 2>&1 && alias diff='diff --color=auto'
+"#;
+
+const UTF8: &str = r#"# sx utf8: switch to a UTF-8 locale when the shell is not in one, so box drawing and accents show
+case $(locale charmap 2>/dev/null) in
+  UTF-8) ;;
+  *)
+    for __sx_l in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+      locale -a 2>/dev/null | grep -qix "$__sx_l" && { export LANG=$__sx_l LC_ALL=$__sx_l; break; }
+    done
+    unset __sx_l;;
+esac
+"#;
+
 /// Shell snippets created on the first run, off until you turn them on. ssh does not send
 /// `COLORTERM`, so vim and `less` on a server fall back to 256 colors. Turn `colorterm` on only when
 /// your terminal supports truecolor (Windows Terminal, iTerm2, kitty and WezTerm do). `no-history`
 /// is for servers that keep `~/.bash_history` empty on purpose: `sx` starts bash without the login
-/// files that usually say so.
+/// files that usually say so. The rest are small comforts for the command line and the terminal. They touch only this shell.
 pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
-    vec![("colorterm", COLORTERM.to_string()), ("no-history", NO_HISTORY.to_string())]
+    vec![
+        ("cmd-colors", CMD_COLORS.to_string()),
+        ("colorterm", COLORTERM.to_string()),
+        ("man-colors", MAN_COLORS.to_string()),
+        ("no-history", NO_HISTORY.to_string()),
+        ("utf8", UTF8.to_string()),
+    ]
 }
 
 /// Names and texts of the vim snippets created on the first run. `vim-recommended` is built from

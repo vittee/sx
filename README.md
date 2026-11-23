@@ -204,6 +204,18 @@ It is off until you turn it on in Profiles.<br>
 Put it in the profile you use for those servers, so other servers keep their history.
 Up-arrow history still works during the session.
 
+### More shell presets
+
+These small snippets are also created off, and `sx init --presets` adds any that are missing.
+They change only this shell, so nothing is written on the server.
+Turn on the ones you want in Profiles.
+
+| Snippet | What it gives you |
+|---|---|
+| `man-colors` | colored man pages, and `less` keeps colors and ignores case in searches |
+| `cmd-colors` | color for `ls`, `grep` and `diff`, only where the server supports it |
+| `utf8` | switches to a UTF-8 locale when the shell is not in one, so box drawing and accents show |
+
 ### Prompt themes
 
 A `.prompt` file contains only the `PS1` string, for example `\[\e[32m\]\u@\h\[\e[0m\]:\w\$ `.<br>

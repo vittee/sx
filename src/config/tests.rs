@@ -10,7 +10,7 @@ fn setup() -> (tempfile::TempDir, Config) {
 #[test]
 fn first_run_creates_samples_and_default_profile() {
     let (tmp, cfg) = setup();
-    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "colorterm", "no-history", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
+    assert_eq!(list_snippets(tmp.path()), ["20-aliases", "cmd-colors", "colorterm", "man-colors", "no-history", "utf8", "vim-basic.vim", "vim-dark.vim", "vim-indent-2.vim", "vim-indent-4.vim", "vim-indent-tabs.vim", "vim-keys.vim", "vim-mouse.vim", "vim-no-traces.vim", "vim-recommended.vim"]);
     assert_eq!(cfg.profiles["default"].snippets, ["20-aliases"]);
     assert_eq!(cfg.profiles["default"].prompt.as_deref(), Some(prompt::DEFAULT_THEME));
     assert!(!ensure_initialized(tmp.path()).unwrap().1);
@@ -520,6 +520,20 @@ fn no_history_is_created_off_and_unsets_histfile_when_turned_on() {
 "));
     fs::remove_file(snippets_dir(tmp.path()).join("no-history.sh")).unwrap();
     assert_eq!(add_missing_presets(tmp.path()).unwrap(), ["no-history"]);
+}
+
+#[test]
+fn every_shell_preset_is_created_off_and_comes_back_when_deleted() {
+    let (tmp, cfg) = setup();
+    let names = ["cmd-colors", "man-colors", "utf8"];
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    for name in names {
+        let text = read_snippet(tmp.path(), name).unwrap();
+        assert!(text.starts_with(&format!("# sx {}: ", name.trim_end_matches(".inputrc"))), "{name}: {text}");
+        assert!(!rc.contains(&text), "{name} is off by default");
+        fs::remove_file(snippets_dir(tmp.path()).join(snippet_file(name))).unwrap();
+    }
+    assert_eq!(add_missing_presets(tmp.path()).unwrap(), names);
 }
 
 #[test]
