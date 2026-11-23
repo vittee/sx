@@ -165,19 +165,22 @@ impl App {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         match self.prof_focus {
             ProfFocus::Snippets => {
+                // The grid is filled column by column, so one step is the next item, which
+                // is the top of the next column after the bottom of this one.
                 let len = self.grid_items().len();
-                let cols = self.hits.chk_cols.max(1);
-                let step = cols as isize;
+                let rows = self.hits.chk_rows.max(1);
                 let sel = self.chk_state.selected().unwrap_or(0);
-                let on_last_row = sel / cols >= len.saturating_sub(1) / cols;
                 match k.code {
-                    KeyCode::Up => Self::move_sel(&mut self.chk_state, len, -step),
-                    // Down stays put on the last row instead of jumping to the last cell.
-                    KeyCode::Down if !on_last_row => Self::move_sel(&mut self.chk_state, len, step),
-                    KeyCode::Right => Self::move_sel(&mut self.chk_state, len, 1),
+                    KeyCode::Up => Self::move_sel(&mut self.chk_state, len, -1),
+                    KeyCode::Down => Self::move_sel(&mut self.chk_state, len, 1),
+                    // Right goes to the same row of the next column, or the last item when that
+                    // column is shorter. The last column stays put.
+                    KeyCode::Right if sel / rows < len.saturating_sub(1) / rows => {
+                        self.chk_state.select(Some((sel + rows).min(len - 1)));
+                    }
                     KeyCode::Char(' ') | KeyCode::Enter => self.toggle_checked(),
-                    KeyCode::Left if sel.is_multiple_of(cols) => self.prof_focus = ProfFocus::Prompt,
-                    KeyCode::Left => Self::move_sel(&mut self.chk_state, len, -1),
+                    KeyCode::Left if sel < rows => self.prof_focus = ProfFocus::Prompt,
+                    KeyCode::Left => Self::move_sel(&mut self.chk_state, len, -(rows as isize)),
                     KeyCode::Esc => self.prof_focus = ProfFocus::Prompt,
                     _ => {}
                 }
@@ -236,7 +239,7 @@ impl App {
         if let Some(d) = wheel {
             if inside(clist, x, y) {
                 let len = self.grid_items().len();
-                Self::move_sel(&mut self.chk_state, len, d * self.hits.chk_cols.max(1) as isize);
+                Self::move_sel(&mut self.chk_state, len, d);
             } else if inside(prompts, x, y) {
                 self.move_prompt(d);
             } else {
@@ -266,11 +269,12 @@ impl App {
                 self.prof_focus = ProfFocus::Prompt;
             }
         } else if inside(clist, x, y) {
-            let cols = self.hits.chk_cols.max(1);
+            let rows = self.hits.chk_rows.max(1);
             let colw = self.hits.chk_colw.max(1);
             let col = ((x - clist.x) / colw) as usize;
-            let i = (self.chk_top + (y - clist.y) as usize) * cols + col;
-            if col < cols && i < self.grid_items().len() {
+            let row = self.chk_top + (y - clist.y) as usize;
+            let i = col * rows + row;
+            if row < rows && i < self.grid_items().len() {
                 self.chk_state.select(Some(i));
                 self.prof_focus = ProfFocus::Snippets;
                 // the checkbox toggles the snippet, the name only selects it
@@ -333,18 +337,20 @@ impl App {
         f.render_widget(block, chk_a);
         self.hits.chk_list = inner;
 
-        // Grid, filled left to right then down: as many columns as fit.
+        // Grid, filled down each column then on to the next: as many columns as fit.
         let selected = profile.as_ref().and_then(|p| self.cfg.profiles.get(p)).cloned().unwrap_or_default();
         let items = self.grid_items();
         let name_w = items.iter().map(|s| s.chars().count()).max().unwrap_or(0);
         let colw = (name_w + 4 + 2).min(inner.width.max(1) as usize).max(1);
         let cols = (inner.width as usize / colw).max(1);
-        self.hits.chk_cols = cols;
+        // Each column is as tall as the pane, so the grid only gets wider when the items do not
+        // fit. If even all the columns that fit are not enough, the grid scrolls down.
+        let total_rows = inner.height.max(1).max(items.len().div_ceil(cols) as u16).min(items.len().max(1) as u16) as usize;
+        self.hits.chk_rows = total_rows;
         self.hits.chk_colw = colw as u16;
-        let total_rows = items.len().div_ceil(cols);
         let height = inner.height as usize;
         let sel = self.chk_state.selected().unwrap_or(0).min(items.len().saturating_sub(1));
-        let sel_row = sel / cols;
+        let sel_row = sel % total_rows;
         if sel_row < self.chk_top {
             self.chk_top = sel_row;
         } else if height > 0 && sel_row >= self.chk_top + height {
@@ -354,7 +360,7 @@ impl App {
         let lines: Vec<Line> = (self.chk_top..total_rows.min(self.chk_top + height))
             .map(|r| {
                 let spans = (0..cols)
-                    .filter_map(|c| items.get(r * cols + c).map(|s| (r * cols + c, s)))
+                    .filter_map(|c| items.get(c * total_rows + r).map(|s| (c * total_rows + r, s)))
                     .flat_map(|(i, name)| {
                         let on = selected.snippets.contains(name);
                         let at_cursor = focused && i == sel;

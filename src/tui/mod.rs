@@ -95,8 +95,8 @@ struct Hits {
     prof_list: Rect,
     prompt_list: Rect,
     chk_list: Rect,
-    /// Snippet checklist grid: columns per row and width of one cell.
-    chk_cols: usize,
+    /// Snippet checklist grid, filled column by column: items per column and width of one cell.
+    chk_rows: usize,
     chk_colw: u16,
     /// Rows of the per-host snippet popup.
     popup_list: Rect,

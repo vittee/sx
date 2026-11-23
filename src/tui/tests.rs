@@ -724,52 +724,91 @@ fn profile_snippets_fill_several_columns() {
     many_snippets(&mut app, 6);
     app.switch_tab(Tab::Profiles);
     render(&mut app);
-    assert!(app.hits.chk_cols > 1, "cols {}", app.hits.chk_cols);
+    assert!(app.hits.chk_rows < 6, "rows {}", app.hits.chk_rows);
     let screen = render(&mut app);
     let line = screen.lines().find(|l| l.contains("snip-00")).unwrap();
-    assert!(line.contains("snip-01"), "first row holds several snippets: {line}");
+    assert!(line.contains(&format!("snip-{:02}", app.hits.chk_rows)), "the second column starts after the first: {line}");
 }
 
-#[test]
-fn snippet_grid_navigates_by_row_and_column_and_clicks_hit_the_right_cell() {
-    let (_t, mut app) = app();
+/// 12 snippets on the Profiles tab with the focus on the snippet grid, and the rows of one column.
+fn grid_app() -> (tempfile::TempDir, App, usize) {
+    let (t, mut app) = app();
     many_snippets(&mut app, 12);
     app.switch_tab(Tab::Profiles);
     render(&mut app);
-    let cols = app.hits.chk_cols;
     key(&mut app, KeyCode::Right);
     key(&mut app, KeyCode::Right); // focus snippets
     assert_eq!(app.prof_focus, ProfFocus::Snippets);
-    key(&mut app, KeyCode::Right);
-    assert_eq!(app.chk_state.selected(), Some(1));
+    let rows = app.hits.chk_rows;
+    assert!((2..12).contains(&rows), "several columns of several rows: {rows}");
+    assert_eq!(rows, app.hits.chk_list.height as usize, "a column is as tall as the pane");
+    (t, app, rows)
+}
+
+#[test]
+fn the_snippet_grid_runs_down_each_column_and_on_to_the_next() {
+    let (_t, mut app, rows) = grid_app();
     key(&mut app, KeyCode::Down);
-    assert_eq!(app.chk_state.selected(), Some(1 + cols));
-    key(&mut app, KeyCode::Up);
-    key(&mut app, KeyCode::Left);
-    key(&mut app, KeyCode::Left); // first column: back to the prompt list
-    assert_eq!(app.prof_focus, ProfFocus::Prompt);
-    let c = app.hits.chk_list;
-    let w = app.hits.chk_colw;
-    click(&mut app, c.x + w + 1, c.y); // second cell of the first row
     assert_eq!(app.chk_state.selected(), Some(1));
-    assert!(app.cfg.profiles["default"].snippets.contains(&"snip-01".to_string()));
+    key(&mut app, KeyCode::Up);
+    key(&mut app, KeyCode::Up); // the very top stays
+    assert_eq!(app.chk_state.selected(), Some(0));
+    for _ in 0..rows {
+        key(&mut app, KeyCode::Down); // past the bottom of the column: the top of the next one
+    }
+    assert_eq!(app.chk_state.selected(), Some(rows));
+    key(&mut app, KeyCode::Up); // past the top: the bottom of the previous column
+    assert_eq!(app.chk_state.selected(), Some(rows - 1));
+    for _ in 0..30 {
+        key(&mut app, KeyCode::Down); // the last item stays
+    }
+    assert_eq!(app.chk_state.selected(), Some(11));
+}
+
+#[test]
+fn left_and_right_change_the_column_and_keep_the_row() {
+    let (_t, mut app, rows) = grid_app();
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Right);
+    assert_eq!(app.chk_state.selected(), Some(rows + 1));
+    key(&mut app, KeyCode::Left);
+    assert_eq!(app.chk_state.selected(), Some(1));
+    key(&mut app, KeyCode::Left); // the first column: back to the prompt list
+    assert_eq!(app.prof_focus, ProfFocus::Prompt);
+    // the last column can be shorter: Right goes to its last item, and then stays
+    key(&mut app, KeyCode::Right);
+    app.chk_state.select(Some(rows - 1));
+    for _ in 0..12 {
+        key(&mut app, KeyCode::Right);
+    }
+    assert_eq!(app.chk_state.selected(), Some(11));
 }
 
 #[test]
 fn only_the_checkbox_toggles_a_snippet_and_the_name_selects_it() {
-    let (_t, mut app) = app();
-    many_snippets(&mut app, 12);
-    app.switch_tab(Tab::Profiles);
-    render(&mut app);
+    let (_t, mut app, rows) = grid_app();
     let c = app.hits.chk_list;
     let w = app.hits.chk_colw;
-    let on = |app: &App| app.cfg.profiles["default"].snippets.contains(&"snip-01".to_string());
-    click(&mut app, c.x + w + 6, c.y); // the name of the second cell
-    assert_eq!(app.chk_state.selected(), Some(1));
-    assert_eq!(app.prof_focus, ProfFocus::Snippets);
-    assert!(!on(&app), "the name does not toggle");
+    let on = |app: &App, n: &str| app.cfg.profiles["default"].snippets.contains(&n.to_string());
+    click(&mut app, c.x + w + 6, c.y); // the name, first row of the second column
+    assert_eq!(app.chk_state.selected(), Some(rows));
+    assert!(!on(&app, &format!("snip-{rows:02}")), "the name does not toggle");
     click(&mut app, c.x + w + 1, c.y); // its checkbox
-    assert!(on(&app));
+    assert!(on(&app, &format!("snip-{rows:02}")));
+    click(&mut app, c.x + w + 6, c.y + 1);
+    assert_eq!(app.chk_state.selected(), Some(rows + 1));
+    assert!(!on(&app, &format!("snip-{:02}", rows + 1)));
+}
+
+#[test]
+fn the_wheel_moves_one_snippet_and_crosses_to_the_next_column() {
+    let (_t, mut app, rows) = grid_app();
+    let c = app.hits.chk_list;
+    app.chk_state.select(Some(rows - 1));
+    wheel(&mut app, c.x + 3, c.y, false);
+    assert_eq!(app.chk_state.selected(), Some(rows), "down from the bottom: the top of the next column");
+    wheel(&mut app, c.x + 3, c.y, true);
+    assert_eq!(app.chk_state.selected(), Some(rows - 1), "and back");
 }
 
 #[test]
