@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.4.0 - 2026-11-23
+
+### Features
+
+- Add the colorterm preset
+- Add the no-history preset
+- Add clip to copy to the local clipboard
+- Set the terminal title on the server and restore it after
+- Mark prompts for the terminal with OSC 133
+- Add sx-theme to switch prompts in a session
+- Add sx-sudo to keep your shell under sudo
+- Add sx-tmux to give tmux windows your shell
+- Add man-colors, cmd-colors and utf8 shell presets
+- Add dir-keys preset to walk back and forward through directories
+- Add history-search, keys-fix and sudo-esc inputrc presets
+- Add completion-colors, menu-complete and no-bell inputrc presets
+- Add sx-info to show what sx gave this shell
+- Open a snippet in the Snippets tab when its name is double-clicked
+- Pick the jump host from the other hosts with Ctrl-K
+- List likely jump hosts first in the jump host picker
+
+### Fixes
+
+- Put the prompt's git and status code inside PS1 so new shells need no functions
+- Show user@host in the built-in themes that only had the host
+- Carry the sx-theme choice into the sx-sudo shell
+- Use Ctrl keys on the Snippets and Profiles pages like Hosts
+- Change the host profile with Ctrl-P so arrow keys cannot change it
+- Preview a prompt first and apply it with Enter
+- Make Esc go back one pane in Profiles
+- Order the footer hints and show Tab on Hosts
+- Apply inputrc snippets with bind one line at a time
+- Highlight inputrc snippets and color them light blue
+- Toggle a snippet in Profiles only from its checkbox
+- Fill the Profiles snippet grid column by column
+
+### Documentation
+
+- Record the demo again and add screenshots for the README
+- Restructure the README with a contents list and screenshots
+
+
 ## v0.3.0 - 2026-11-21
 
 ### Features
