@@ -12,6 +12,7 @@ Nothing is written on the server. The README explains the mechanism, the config 
 - `src/tui`: ratatui screens. `hostedit.rs` is the options form, `hosts.rs` the host list, `tests.rs` the UI tests.
 - `src/completions`: `sx completions` scripts for five shells and `--install`. `sx __complete` is hidden and used by the scripts.
 - `src/history`, `src/log`, `src/prompt`, `src/editor`, `src/highlight`: smaller pieces.
+- `src/testutil.rs`: helpers for tests that start bash, see Conventions.
 
 ## Checks
 
@@ -22,6 +23,10 @@ cargo clippy --all-targets -q -- -D warnings
 cargo test -q
 ```
 
+Clippy runs with `-D warnings` on Ubuntu, macOS and Windows in CI.
+Code that only needs `mut` or an import under `#[cfg(windows)]` fails on the other two,
+so keep the `mut` inside the `cfg` branch.
+
 On Windows `cargo build` fails with "Access is denied" while an `sx.exe` is running.
 Use `cargo check`, clippy and test, or build with `--target-dir` somewhere else.
 
@@ -30,9 +35,13 @@ Use `cargo check`, clippy and test, or build with `--target-dir` somewhere else.
 - ssh keeps the first value of an option. Options sx adds for a host go after what the user typed, so the user's win.
 - Saved connection options live in sx's `config.toml`, never in `~/.ssh/config`.
 - UI tests render a 110x30 `TestBackend`. Reuse the helpers at the top of `src/tui/tests.rs` (`app`, `render`, `key`, `ctrl`, `typed`, `click`, `squash`).
+- A test that starts bash uses `crate::testutil::bash()` and holds `crate::testutil::bash_lock()` while it runs.
+  Git Bash flips the console mode on Windows, and parallel bash processes garble the terminal.
 - Usage text follows `sx --help`: `[]` is optional, `<>` is required.
 - `README.md` has CRLF line endings. Keep them, for example by editing it with Python and `newline=''`.
 - Update the README in the same commit as the change it describes.
+- The README has a `## Contents` list of its `##` headings. Update it when you add, rename or move one.
+  Check that links such as `#sx-theme-sxt` match the heading, with punctuation dropped and spaces turned into `-`.
 - Wrap prose in the README at clause ends, one clause per line where it helps.
 
 ## Commits and releases
@@ -40,6 +49,7 @@ Use `cargo check`, clippy and test, or build with `--target-dir` somewhere else.
 - Commit only when asked. Never push. Never add `Co-Authored-By` or other attribution lines.
 - One topic per commit, a one-line conventional message (`feat:`, `fix:`, `docs:`, `chore:`).
 - `demo/sx.gif` is recorded with `sh demo/run.sh` (VHS in Docker).
+- `demo/screens/*.png` are the README screenshots. `sh demo/run.sh screens.tape` records them.
 
 ### Releasing
 
