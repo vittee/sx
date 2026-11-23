@@ -756,6 +756,23 @@ fn snippet_grid_navigates_by_row_and_column_and_clicks_hit_the_right_cell() {
 }
 
 #[test]
+fn only_the_checkbox_toggles_a_snippet_and_the_name_selects_it() {
+    let (_t, mut app) = app();
+    many_snippets(&mut app, 12);
+    app.switch_tab(Tab::Profiles);
+    render(&mut app);
+    let c = app.hits.chk_list;
+    let w = app.hits.chk_colw;
+    let on = |app: &App| app.cfg.profiles["default"].snippets.contains(&"snip-01".to_string());
+    click(&mut app, c.x + w + 6, c.y); // the name of the second cell
+    assert_eq!(app.chk_state.selected(), Some(1));
+    assert_eq!(app.prof_focus, ProfFocus::Snippets);
+    assert!(!on(&app), "the name does not toggle");
+    click(&mut app, c.x + w + 1, c.y); // its checkbox
+    assert!(on(&app));
+}
+
+#[test]
 fn f2_toggles_mouse_capture_and_the_footer_says_how() {
     let (_t, mut app) = app();
     assert!(app.mouse);

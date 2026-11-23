@@ -267,12 +267,16 @@ impl App {
             }
         } else if inside(clist, x, y) {
             let cols = self.hits.chk_cols.max(1);
-            let col = ((x - clist.x) / self.hits.chk_colw.max(1)) as usize;
+            let colw = self.hits.chk_colw.max(1);
+            let col = ((x - clist.x) / colw) as usize;
             let i = (self.chk_top + (y - clist.y) as usize) * cols + col;
             if col < cols && i < self.grid_items().len() {
                 self.chk_state.select(Some(i));
                 self.prof_focus = ProfFocus::Snippets;
-                self.toggle_checked();
+                // the checkbox toggles the snippet, the name only selects it
+                if (x - clist.x) % colw < 4 {
+                    self.toggle_checked();
+                }
             }
         }
     }
