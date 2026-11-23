@@ -113,8 +113,7 @@ fn heredoc_tag_never_collides_with_the_content() {
 fn generated_shell_actually_works_in_bash() {
     // Runs only where bash exists (Linux, macOS, Git Bash); proves the wrapper parses and the
     // functions hand the config over through the process substitution.
-    let Ok(bash) = std::process::Command::new("bash").arg("--version").output() else { return };
-    if !bash.status.success() {
+    if !bash_at_least(3, 0) {
         return;
     }
     let tmp = tempfile::tempdir().unwrap();
@@ -557,6 +556,9 @@ fn run_in_rc(script: &str) -> Option<(String, String)> {
 /// [`run_in_rc`] with `before` run first, for example to set an environment variable the rc reads.
 fn run_in_rc_after(before: &str, script: &str) -> Option<(String, String)> {
     use std::io::Write;
+    if !bash_at_least(3, 0) {
+        return None;
+    }
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", Some("fino"));
     let rc = build_rc(tmp.path(), &cfg, "default");
@@ -573,6 +575,31 @@ fn run_in_rc_after(before: &str, script: &str) -> Option<(String, String)> {
     child.stdin.take()?.write_all(format!("{before}\n{rc}\n{script}").as_bytes()).ok()?;
     let out = child.wait_with_output().ok()?;
     Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
+}
+
+/// Whether the `bash` the tests run is at least this version. macOS still ships 3.2, which has
+/// neither `${PS1@P}` (4.4) nor the readline settings the inputrc snippets use (6.3, bash 4.4).
+fn bash_at_least(major: u32, minor: u32) -> bool {
+    use std::io::Write;
+    let Ok(mut child) = std::process::Command::new("bash")
+        .arg("-s")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let Some(mut stdin) = child.stdin.take() else { return false };
+    let _ = stdin.write_all(b"echo ${BASH_VERSINFO[0]} ${BASH_VERSINFO[1]}
+");
+    drop(stdin);
+    let Ok(out) = child.wait_with_output() else { return false };
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    // A launcher that is not a shell (the WSL `bash.exe` with no distribution) prints a message instead.
+    let mut v = text.split_whitespace().map(|n| n.parse::<u32>());
+    let (Some(Ok(a)), Some(Ok(b))) = (v.next(), v.next()) else { return false };
+    (a, b) >= (major, minor)
 }
 
 #[test]
@@ -629,6 +656,9 @@ fn sx_info_refuses_to_run_in_a_shell_that_sx_did_not_start() {
 
 #[test]
 fn dir_keys_go_back_and_forward_through_the_directories_you_visited() {
+    if !bash_at_least(3, 0) {
+        return;
+    }
     use std::io::Write;
     let (tmp, mut cfg) = setup();
     cfg.toggle_snippet("default", "dir-keys");
@@ -658,6 +688,9 @@ fn dir_keys_go_back_and_forward_through_the_directories_you_visited() {
 
 #[test]
 fn inputrc_snippets_are_applied_line_by_line_with_their_if_rules() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
     use std::io::Write;
     let (tmp, mut cfg) = setup();
     for n in ["history-search.inputrc", "completion-colors.inputrc", "menu-complete.inputrc", "no-bell.inputrc", "sudo-esc.inputrc"] {
@@ -689,6 +722,9 @@ fn inputrc_snippets_are_applied_line_by_line_with_their_if_rules() {
 
 #[test]
 fn the_title_runs_inside_ps1_with_no_function_and_keeps_the_status() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
     // `sudo -i` and tmux start shells that have none of our functions, so the title is plain code in PS1
     let script = "cd /tmp; false; __sx_title; echo \"status=$?\"; t=${PS1@P}; case $t in *'0;[sx] '*'@'*': /tmp'*) echo TITLE_OK;; *) echo TITLE_MISSING;; esac\n";
     let Some((out, err)) = run_in_rc(script) else { return };
@@ -698,6 +734,9 @@ fn the_title_runs_inside_ps1_with_no_function_and_keeps_the_status() {
 
 #[test]
 fn the_theme_preview_still_shows_a_demo_branch_and_status() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
     let Some((out, err)) = run_in_rc("sx-theme
 ") else { return };
     assert!(!err.contains("command not found"), "{err}");
@@ -720,7 +759,8 @@ fn the_theme_chosen_with_sx_theme_is_remembered_and_carried_into_the_sx_sudo_she
 
     // an unknown name changes nothing and prints nothing
     let Some((out, err)) = run_in_rc_after("export SX_THEME=nope", "echo \"left=${SX_THEME-unset}\"\n") else { return };
-    assert!(out.contains("left=unset") && !err.contains("no theme"), "{out}{err}");
+    // stderr also holds what the terminal echoes, and the rc has "no theme named $1" in it
+    assert!(out.contains("left=unset") && !err.contains("no theme named nope"), "{out}{err}");
 }
 
 #[test]

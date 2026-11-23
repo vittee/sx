@@ -171,7 +171,7 @@ fn no_theme_needs_a_function_so_a_new_shell_can_use_the_inherited_prompt() {
 /// is no bash to run.
 fn run_bash(script: &str) -> Option<(String, String)> {
     use std::io::Write;
-    if !std::process::Command::new("bash").arg("--version").output().ok()?.status.success() {
+    if !bash_at_least(3, 0) {
         return None;
     }
     let mut child = std::process::Command::new("bash")
@@ -186,8 +186,36 @@ fn run_bash(script: &str) -> Option<(String, String)> {
     Some((String::from_utf8_lossy(&out.stdout).replace('\r', ""), String::from_utf8_lossy(&out.stderr).to_string()))
 }
 
+/// Whether the `bash` the tests run is at least this version. macOS still ships 3.2, which has
+/// neither `${PS1@P}` (4.4) nor the readline settings the inputrc snippets use (6.3, bash 4.4).
+fn bash_at_least(major: u32, minor: u32) -> bool {
+    use std::io::Write;
+    let Ok(mut child) = std::process::Command::new("bash")
+        .arg("-s")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let Some(mut stdin) = child.stdin.take() else { return false };
+    let _ = stdin.write_all(b"echo ${BASH_VERSINFO[0]} ${BASH_VERSINFO[1]}
+");
+    drop(stdin);
+    let Ok(out) = child.wait_with_output() else { return false };
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    // A launcher that is not a shell (the WSL `bash.exe` with no distribution) prints a message instead.
+    let mut v = text.split_whitespace().map(|n| n.parse::<u32>());
+    let (Some(Ok(a)), Some(Ok(b))) = (v.next(), v.next()) else { return false };
+    (a, b) >= (major, minor)
+}
+
 #[test]
 fn a_shell_without_any_function_shows_the_branch_and_the_status_from_the_inherited_prompt() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
     // `sudo -i` and `su` keep the exported PS1 and drop the functions, which `env -i` does too.
     let script = format!(
         "{}cd \"$(mktemp -d)\" && git init -q -b trunk . 2>/dev/null\n\
@@ -202,6 +230,9 @@ fn a_shell_without_any_function_shows_the_branch_and_the_status_from_the_inherit
 
 #[test]
 fn the_exit_status_survives_the_branch_part_of_the_prompt() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
     let script = format!("{}false\necho \"[${{PS1@P}}]\"\n", theme("robbyrussell").unwrap());
     let Some((out, err)) = run_bash(&script) else { return };
     assert!(!err.contains("command not found"), "{err}");
