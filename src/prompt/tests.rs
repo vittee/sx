@@ -175,7 +175,8 @@ fn run_bash(script: &str) -> Option<(String, String)> {
     if !bash_at_least(3, 0) {
         return None;
     }
-    let mut child = std::process::Command::new("bash")
+    let _bash = crate::testutil::bash_lock();
+    let mut child = crate::testutil::bash()
         .arg("-s")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

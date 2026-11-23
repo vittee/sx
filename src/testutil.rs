@@ -2,10 +2,40 @@
 
 use std::io::Write;
 
+/// A `bash` command for the tests. On Windows it gets a hidden console of its own: Git Bash changes
+/// the modes of the console it shares with `cargo test`, and the output printed meanwhile loses its
+/// carriage returns.
+pub fn bash() -> std::process::Command {
+    let mut c = std::process::Command::new("bash");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    c
+}
+
+/// What [`bash_lock`] hands out: it holds the lock on Windows and is empty elsewhere.
+pub struct Lock(#[cfg(windows)] #[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+/// Held while a test runs a `bash`. Hidden consoles started and closed at the same time still confuse
+/// each other, and the console of `cargo test` can end up without carriage returns. One at a time is safe.
+pub fn bash_lock() -> Lock {
+    #[cfg(windows)]
+    {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        Lock(LOCK.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+    #[cfg(not(windows))]
+    Lock()
+}
+
 /// The version of the `bash` on the PATH, or `None` when there is no working one. A launcher that is
 /// not a shell (the WSL `bash.exe` with no distribution) prints a message instead of the version.
 fn bash_version() -> Option<(u32, u32)> {
-    let mut child = std::process::Command::new("bash")
+    let _bash = bash_lock();
+    let mut child = bash()
         .arg("-s")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

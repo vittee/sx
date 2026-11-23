@@ -127,7 +127,8 @@ fn generated_shell_actually_works_in_bash() {
     // The script goes in on stdin: quoting a multi-line script as an argument is not reliable
     // when `bash` is a launcher such as WSL's bash.exe.
     use std::io::Write;
-    let mut child = std::process::Command::new("bash")
+    let _bash = crate::testutil::bash_lock();
+    let mut child = crate::testutil::bash()
         .arg("-s")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -563,7 +564,8 @@ fn run_in_rc_after(before: &str, script: &str) -> Option<(String, String)> {
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", Some("fino"));
     let rc = build_rc(tmp.path(), &cfg, "default");
-    let mut child = std::process::Command::new("bash")
+    let _bash = crate::testutil::bash_lock();
+    let mut child = crate::testutil::bash()
         .arg("--norc")
         .arg("-i")
         .env("LANG", "C.UTF-8")
@@ -642,7 +644,8 @@ fn dir_keys_go_back_and_forward_through_the_directories_you_visited() {
     let script = "mkdir -p /tmp/sxdk/a/b; cd /tmp/sxdk; __sx_dk_track; cd a; __sx_dk_track; cd b; __sx_dk_track; \
         __sx_dk_prev; __sx_dk_track; pwd; __sx_dk_prev; __sx_dk_track; pwd; __sx_dk_next; __sx_dk_track; pwd; \
         __sx_dk_up; __sx_dk_track; pwd; __sx_dk_next; __sx_dk_track; pwd; echo back=${#__sx_dk_back[@]} fwd=${#__sx_dk_fwd[@]}\n";
-    let Ok(mut child) = std::process::Command::new("bash")
+    let _bash = crate::testutil::bash_lock();
+    let Ok(mut child) = crate::testutil::bash()
         .arg("--norc")
         .arg("-i")
         .env("HOME", tmp.path())
@@ -675,7 +678,8 @@ fn inputrc_snippets_are_applied_line_by_line_with_their_if_rules() {
     let rc = build_rc(tmp.path(), &cfg, "default");
     let script = "bind -P | grep -a 'history-search-backward can be found'; bind -P | grep -a 'menu-complete-backward can be found'; bind -v | grep -a 'menu-complete-display-prefix'; bind -v | grep -a 'bell-style'; bind -v | grep -a 'colored-stats'; bind -s | grep -a -c asudo
 ";
-    let Ok(mut child) = std::process::Command::new("bash")
+    let _bash = crate::testutil::bash_lock();
+    let Ok(mut child) = crate::testutil::bash()
         .arg("--norc")
         .arg("-i")
         .env("HOME", tmp.path())
