@@ -22,5 +22,17 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      # The tests run a real bash. Windows has only the WSL launcher without a distribution, so
+      # Git Bash goes first in PATH, and macOS ships bash 3.2, so a current one goes first.
+      - name: Use Git Bash
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
+      - name: Use a current bash
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - run: bash --version
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
