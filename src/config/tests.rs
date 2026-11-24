@@ -343,11 +343,12 @@ fn the_vim_presets_are_off_by_default_and_every_name_is_valid() {
     assert_eq!(cfg.profiles["default"].snippets, ["20-aliases"]);
     for (name, text) in presets::vim_presets() {
         assert!(is_valid_name(name) && name.ends_with(".vim"), "{name}");
-        assert!(text.starts_with("\" sx "), "{name}");
+        assert!(parse_meta(name, &text).version.is_some(), "{name}");
         assert_eq!(read_snippet(tmp.path(), name).unwrap(), text, "{name}");
     }
     let recommended = read_snippet(tmp.path(), "vim-recommended.vim").unwrap();
-    assert!(recommended.starts_with(&read_snippet(tmp.path(), "vim-basic.vim").unwrap()));
+    let basic = read_snippet(tmp.path(), "vim-basic.vim").unwrap();
+    assert!(without_front_matter(&recommended).starts_with(without_front_matter(&basic)));
 }
 
 #[test]
@@ -588,7 +589,7 @@ fn every_shell_preset_is_created_off_and_comes_back_when_deleted() {
     let rc = build_rc(tmp.path(), &cfg, "default");
     for name in names {
         let text = read_snippet(tmp.path(), name).unwrap();
-        assert!(text.starts_with(&format!("# sx {}: ", name.trim_end_matches(".inputrc"))), "{name}: {text}");
+        assert!(parse_meta(name, &text).description.is_some(), "{name}: {text}");
         assert!(!rc.contains(&text), "{name} is off by default");
         fs::remove_file(snippets_dir(tmp.path()).join(snippet_file(name))).unwrap();
     }
@@ -878,4 +879,57 @@ fn front_matter_is_removed_from_vim_and_prompt_snippets_too() {
     write_snippet(tmp.path(), "p.prompt", "---\ndescription: Mine\n---\nexport PS1='mine> '\n").unwrap();
     assert!(theme_ps1(tmp.path(), "p.prompt").is_some_and(|p| p.contains("mine> ") && !p.contains("description")));
     assert!(theme_text(tmp.path(), "p.prompt").is_some_and(|t| !t.contains("description")));
+}
+
+#[test]
+fn every_preset_has_a_description_and_a_version_in_its_front_matter() {
+    for (name, text) in presets::all() {
+        let meta = parse_meta(name, &text);
+        assert!(meta.description.as_deref().is_some_and(|d| !d.is_empty() && !d.starts_with("sx ")), "{name}: {text}");
+        assert_eq!(meta.version, Some(presets::version_of(name)), "{name}");
+        assert!(text.contains("
+version: 1.0
+"), "{name}: x.y form");
+        assert!(!without_front_matter(&text).contains("sx ") || name == "vim-recommended.vim", "{name}: the note moved");
+    }
+}
+
+#[test]
+fn an_older_preset_is_replaced_and_a_newer_or_unversioned_file_is_kept() {
+    let (tmp, mut cfg) = setup();
+    cfg.toggle_snippet("default", "colorterm");
+    let old = "---\ndescription: old\nversion: 0.9\n---\nexport COLORTERM=old\n";
+    write_snippet(tmp.path(), "colorterm", old).unwrap();
+    write_snippet(tmp.path(), "no-history", "---\ndescription: mine\nversion: 99.0\n---\nmine\n").unwrap();
+    write_snippet(tmp.path(), "utf8", "# my own utf8\nmine\n").unwrap();
+    assert_eq!(update_presets(tmp.path()).unwrap(), [("colorterm".to_string(), Version::new(0, 9), Version::new(1, 0))]);
+    assert!(read_snippet(tmp.path(), "colorterm").unwrap().contains("COLORTERM=truecolor"));
+    assert!(read_snippet(tmp.path(), "no-history").unwrap().contains("mine"), "a newer file stays");
+    assert_eq!(read_snippet(tmp.path(), "utf8").unwrap(), "# my own utf8\nmine\n", "no version: not touched");
+    assert!(update_presets(tmp.path()).unwrap().is_empty(), "now everything is current");
+    assert!(cfg.profiles["default"].snippets.contains(&"colorterm".to_string()), "it stays turned on");
+}
+
+#[test]
+fn a_version_is_two_numbers_with_a_dot_and_compares_by_major_then_minor() {
+    assert_eq!("1.0".parse(), Ok(Version::new(1, 0)));
+    assert_eq!("12.34".parse(), Ok(Version::new(12, 34)));
+    for bad in ["1", "1.0.0", "v1.0", "1.x", ".1", "1.", "", "-1.0", "1. 0", "1,0"] {
+        assert!(bad.parse::<Version>().is_err(), "{bad:?}");
+    }
+    assert!(Version::new(1, 10) > Version::new(1, 9), "not a decimal number");
+    assert!(Version::new(2, 0) > Version::new(1, 99));
+    assert_eq!(Version::new(1, 2).to_string(), "1.2");
+    assert_eq!(parse_meta("a", "---\nversion: 1.2\n---\n").version, Some(Version::new(1, 2)));
+    assert_eq!(parse_meta("a", "---\nversion: 1\n---\n").version, None, "a lone number is not a version");
+}
+
+#[test]
+fn a_preset_with_a_malformed_version_is_left_alone_and_the_same_version_is_not_replaced() {
+    let (tmp, _cfg) = setup();
+    write_snippet(tmp.path(), "colorterm", "---\nversion: 1\n---\nmine\n").unwrap();
+    write_snippet(tmp.path(), "utf8", "---\nversion: 1.0\n---\nmine\n").unwrap();
+    assert!(update_presets(tmp.path()).unwrap().is_empty());
+    assert!(read_snippet(tmp.path(), "colorterm").unwrap().contains("mine"));
+    assert!(read_snippet(tmp.path(), "utf8").unwrap().contains("mine"), "equal is not older");
 }

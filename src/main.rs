@@ -34,8 +34,8 @@ Usage:
   sx                                                          open the TUI (hosts, snippets, profiles)
   sx [ssh args] <host>                                        like ssh, but the remote bash loads your rc
   sx <host> --options <name>                                  use the host's saved options <name> (anywhere in the arguments)
-  sx init [--presets]                                         create the sample snippets and default profile,
-                                                              --presets adds the presets that are missing, switched off
+  sx init [--presets]                                         create the snippet presets and default profile,
+                                                              --presets adds the presets that are missing, switched off, and updates the older ones
   sx --dry-run [ssh args] <host>                              print the ssh command instead of running it
   sx completions <bash|zsh|fish|powershell|nushell>           print the completion script
   sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]
@@ -132,7 +132,7 @@ fn take_options(args: &mut Vec<String>) -> Result<Option<String>, String> {
 /// Records that `host` was connected to, so "last used" in the TUI counts connections made from the
 /// command line too. A missing or unreadable config is left alone.
 fn mark_used(dir: &std::path::Path, host: &str) {
-    // Writing a config here would make `sx init` think the sample snippets exist already.
+    // Writing a config here would make `sx init` think the snippet presets exist already.
     if host.is_empty() || !dir.join("config.toml").is_file() {
         return;
     }
@@ -319,6 +319,17 @@ fn init(rest: &[String]) -> ExitCode {
                 return ExitCode::FAILURE;
             }
         }
+        match config::update_presets(&dir) {
+            Ok(updated) if updated.is_empty() => {}
+            Ok(updated) => {
+                let list: Vec<String> = updated.iter().map(|(n, from, to)| format!("{n} (v{from} to v{to})")).collect();
+                log::ok_out(format!("updated {} to the newer version", list.join(", ")));
+            }
+            Err(e) => {
+                log::error(e.to_string());
+                return ExitCode::FAILURE;
+            }
+        }
     }
     ExitCode::SUCCESS
 }
@@ -342,7 +353,7 @@ fn load_payload(host: &str) -> Result<Option<String>, String> {
     let dir = config::config_dir().ok_or("cannot find home directory")?;
     let (cfg, created) = config::ensure_initialized(&dir).map_err(|e| e.to_string())?;
     if created {
-        log::info(format!("created sample snippets in {}", dir.display()));
+        log::info(format!("created snippet presets in {}", dir.display()));
     }
     let Some(profile) = profile_for_target(&cfg, host) else { return Ok(None) };
     let rc = config::build_rc_for_host(&dir, &cfg, profile, &host_key(&cfg, host));

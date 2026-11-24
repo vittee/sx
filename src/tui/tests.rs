@@ -468,9 +468,9 @@ fn clicking_in_editor_focuses_and_places_cursor() {
     app.switch_tab(Tab::Snippets);
     render(&mut app);
     let ed = app.hits.editor;
-    click(&mut app, ed.x + 4, ed.y);
+    click(&mut app, ed.x + 4, ed.y + 1); // the description line of the front matter
     assert!(app.editor_focus);
-    assert_eq!((app.editor.row, app.editor.col), (0, 4));
+    assert_eq!((app.editor.row, app.editor.col), (1, 4));
 }
 
 #[test]

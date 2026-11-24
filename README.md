@@ -40,7 +40,7 @@ Details are under [How it works](#how-it-works).
 Quick start:
 
 ```sh
-sx init                 # create sample snippets and the default profile
+sx init                 # create the snippet presets and the default profile
 sx user@host            # log in with your rc
 sx                      # or open the TUI
 ```
@@ -77,7 +77,7 @@ sx                                                                   # open the 
 sx [ssh args] <host>                                                 # like ssh, with your rc injected
 sx <host> --options <name>                                           # use the options named <name>, saved for the host (Ctrl-O in the TUI)
 sx --dry-run [ssh args] <host>                                       # print the ssh command, do not run it
-sx init [--presets]                                                  # create sample snippets and the default profile, --presets adds the presets that are missing, switched off
+sx init [--presets]                                                  # create the snippet presets and the default profile, --presets adds the presets that are missing, switched off, and updates the older ones
 sx completions <bash|zsh|fish|powershell|nushell>                    # print a completion script
 sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]  # set up shell completion (asks first)
 sx --version                                                         # print the sx version (ssh's -V shows the ssh one)
@@ -243,12 +243,16 @@ Run `sx-theme <name>` on the server to try a theme without reconnecting, see [`s
 
 A snippet preset is a ready-made snippet that `sx init` creates for you, all off. Turn on the ones you want in Profiles.
 
-For a setup made before they existed, `sx init --presets` adds the presets that are missing.
+Each preset starts with front matter that holds its `description` and its `version`, written `major.minor` such as `1.0`.<br>
+For a setup made before they existed, `sx init --presets` adds the presets that are missing.<br>
+It also replaces a preset whose `version` is older than the built-in one, so fixes reach you, and your edits to that preset are lost.<br>
+A copy with no `version`, a `version` that is not in the `major.minor` form, or a newer `version`, is left alone, so write your own snippets under another name, or delete the preset file to get the built-in one back.
 
 ### Shell presets
 
 | Preset | What it gives you |
 |---|---|
+| `20-aliases` | `ll`, `la` and `gs` for `ls -alF`, `ls -A` and `git status`.<br> The default profile turns it on |
 | `colorterm` | Sets `COLORTERM=truecolor`, so `vim` and `less` use 24-bit color. Turn it on only if your terminal supports it (Windows Terminal, iTerm2, kitty and WezTerm do) |
 | `no-history` | `unset HISTFILE`, so this shell writes no history file. Up-arrow history still works |
 | `man-colors` | Colored man pages, and `less` keeps colors and ignores case in searches |

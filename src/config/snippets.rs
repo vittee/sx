@@ -81,6 +81,12 @@ pub struct Version {
     pub minor: u32,
 }
 
+impl Version {
+    pub const fn new(major: u32, minor: u32) -> Version {
+        Version { major, minor }
+    }
+}
+
 impl std::str::FromStr for Version {
     type Err = ();
 

@@ -289,12 +289,6 @@ fn is_valid_name(name: &str) -> bool {
         && !name.starts_with('.')
 }
 
-const SAMPLE_ALIASES: &str = "\
-alias ll='ls -alF'
-alias la='ls -A'
-alias gs='git status'
-";
-
 impl Config {
     pub fn load(dir: &Path) -> io::Result<Config> {
         match fs::read_to_string(dir.join("config.toml")) {
@@ -424,7 +418,7 @@ impl Config {
     }
 }
 
-/// First run: create the sample aliases (on), the vim presets and the shell presets (off) and the default profile with
+/// First run: create the presets (the aliases are on in the default profile, the rest off) and the default profile with
 /// the default prompt theme.
 /// Returns true if anything was created.
 pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
@@ -433,8 +427,7 @@ pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
 
     if !snippets_dir(dir).exists() {
         fs::create_dir_all(snippets_dir(dir))?;
-        write_snippet(dir, "20-aliases", SAMPLE_ALIASES)?;
-        for (name, text) in presets::vim_presets().into_iter().chain(presets::shell_presets()).chain(presets::inputrc_presets()) {
+        for (name, text) in presets::all() {
             write_snippet(dir, name, &text)?;
         }
         changed = true;
@@ -459,13 +452,31 @@ pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
 pub fn add_missing_presets(dir: &Path) -> io::Result<Vec<String>> {
     let have = list_snippets(dir);
     let mut added = Vec::new();
-    for (name, text) in presets::vim_presets().into_iter().chain(presets::shell_presets()).chain(presets::inputrc_presets()) {
+    for (name, text) in presets::all() {
         if !have.iter().any(|n| n == name) {
             write_snippet(dir, name, &text)?;
             added.push(name.to_string());
         }
     }
     Ok(added)
+}
+
+/// Replaces the presets in `snippets/` that are older than the built-in ones, and returns each one
+/// with the version it had and the version it has now. A file without a `version` is not touched,
+/// since it may be your own, and neither is one that is as new or newer. Your edits to a replaced
+/// preset are lost. Nothing is turned on or off in any profile.
+pub fn update_presets(dir: &Path) -> io::Result<Vec<(String, Version, Version)>> {
+    let mut updated = Vec::new();
+    for (name, text) in presets::all() {
+        let Ok(old) = read_snippet(dir, name) else { continue };
+        let Some(have) = parse_meta(name, &old).version else { continue };
+        let new = presets::version_of(name);
+        if have < new {
+            write_snippet(dir, name, &text)?;
+            updated.push((name.to_string(), have, new));
+        }
+    }
+    Ok(updated)
 }
 
 #[cfg(test)]

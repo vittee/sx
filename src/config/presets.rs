@@ -5,6 +5,8 @@
 //! into one config, so these are small layers. A later name wins when two set the same option.
 //! `vim-recommended` includes everything in `vim-basic`, so pick one of the two.
 
+use super::Version;
+
 const BASIC: &str = r#"" sx vim-basic: the settings most people expect, no plugins
 set nocompatible
 syntax on
@@ -186,20 +188,27 @@ bind '"\e[1;3C": "\C-a\C-k\C-x\C-n\n"'
 bind '"\e\e[C": "\C-a\C-k\C-x\C-n\n"'
 "#;
 
-/// Shell snippets created on the first run, off until you turn them on. ssh does not send
+const ALIASES: &str = "# sx 20-aliases: short aliases for ls and git status
+alias ll='ls -alF'
+alias la='ls -A'
+alias gs='git status'
+";
+
+/// Shell snippets created on the first run, off until you turn them on (`20-aliases` is the one the default profile turns on). ssh does not send
 /// `COLORTERM`, so vim and `less` on a server fall back to 256 colors. Turn `colorterm` on only when
 /// your terminal supports truecolor (Windows Terminal, iTerm2, kitty and WezTerm do). `no-history`
 /// is for servers that keep `~/.bash_history` empty on purpose: `sx` starts bash without the login
 /// files that usually say so. The rest are small comforts for the command line and the terminal. They touch only this shell.
 pub(super) fn shell_presets() -> Vec<(&'static str, String)> {
-    vec![
+    with_front_matter(vec![
+        ("20-aliases", ALIASES.to_string()),
         ("cmd-colors", CMD_COLORS.to_string()),
         ("colorterm", COLORTERM.to_string()),
         ("dir-keys", DIR_KEYS.to_string()),
         ("man-colors", MAN_COLORS.to_string()),
         ("no-history", NO_HISTORY.to_string()),
         ("utf8", UTF8.to_string()),
-    ]
+    ])
 }
 
 const COMPLETION_COLORS: &str = "# sx completion-colors: Tab completion lists use your LS_COLORS, and the part you typed is colored
@@ -262,20 +271,20 @@ $endif
 /// Readline key bindings created on the first run. They are `.inputrc` snippets, so `sx` applies them
 /// with `bind`, one line at a time, when the shell starts.
 pub(super) fn inputrc_presets() -> Vec<(&'static str, String)> {
-    vec![
+    with_front_matter(vec![
         ("completion-colors.inputrc", COMPLETION_COLORS.to_string()),
         ("history-search.inputrc", HISTORY_SEARCH.to_string()),
         ("keys-fix.inputrc", KEYS_FIX.to_string()),
         ("menu-complete.inputrc", MENU_COMPLETE.to_string()),
         ("no-bell.inputrc", NO_BELL.to_string()),
         ("sudo-esc.inputrc", SUDO_ESC.to_string()),
-    ]
+    ])
 }
 
 /// Names and texts of the vim snippets created on the first run. `vim-recommended` is built from
 /// `vim-basic` plus its own extras.
 pub(super) fn vim_presets() -> Vec<(&'static str, String)> {
-    vec![
+    with_front_matter(vec![
         ("vim-basic.vim", BASIC.to_string()),
         ("vim-dark.vim", DARK.to_string()),
         ("vim-indent-2.vim", INDENT_2.to_string()),
@@ -284,6 +293,44 @@ pub(super) fn vim_presets() -> Vec<(&'static str, String)> {
         ("vim-keys.vim", KEYS.to_string()),
         ("vim-mouse.vim", MOUSE_CLIPBOARD.to_string()),
         ("vim-no-traces.vim", NO_TRACES.to_string()),
-        ("vim-recommended.vim", format!("{BASIC}{RECOMMENDED_EXTRA}")),
-    ]
+        ("vim-recommended.vim", format!("{}{RECOMMENDED_EXTRA}", after_first_line(BASIC))),
+    ])
+}
+
+/// Every built-in preset: its name and its text, front matter included.
+pub(super) fn all() -> Vec<(&'static str, String)> {
+    vim_presets().into_iter().chain(shell_presets()).chain(inputrc_presets()).collect()
+}
+
+/// The version of each preset, `1.0` unless listed here. Raise a preset's version when its text
+/// changes, and `sx init --presets` replaces the older copies with it.
+const VERSIONS: &[(&str, Version)] = &[];
+
+/// The version of the preset called `name`.
+pub(super) fn version_of(name: &str) -> Version {
+    VERSIONS.iter().find(|(n, _)| *n == name).map_or(Version::new(1, 0), |(_, v)| *v)
+}
+
+fn after_first_line(text: &str) -> &str {
+    text.split_once('\n').map_or("", |(_, rest)| rest)
+}
+
+/// Puts `description` and `version` in front of each preset. The description is the `sx <name>: ...`
+/// comment line that the text starts with, which moves into the front matter.
+fn with_front_matter(presets: Vec<(&'static str, String)>) -> Vec<(&'static str, String)> {
+    presets
+        .into_iter()
+        .map(|(name, text)| {
+            let stem = name.trim_end_matches(".vim").trim_end_matches(".inputrc");
+            let marker = format!("sx {stem}: ");
+            let is_note = |l: &str| l.trim_start_matches(['"', '#']).trim_start().starts_with(&marker);
+            let description = text
+                .lines()
+                .find(|l| is_note(l))
+                .map(|l| l.trim_start_matches(['"', '#']).trim_start().trim_start_matches(&marker).to_string())
+                .unwrap_or_default();
+            let body: String = text.split_inclusive('\n').filter(|l| !is_note(l)).collect();
+            (name, format!("---\ndescription: {description}\nversion: {}\n---\n{body}", version_of(name)))
+        })
+        .collect()
 }
