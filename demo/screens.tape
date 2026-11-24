@@ -23,11 +23,17 @@ Sleep 4s
 Type "exit"
 Enter
 Sleep 2s
+# An environment to show on the Hosts and Envs pages and in the prompt.
+Type `printf '[envs.prod]\nlabel = "PROD"\ncolor = "red"\nfeatures = ["badge", "title", "confirm", "guard"]\nguard = ["rm -r*", "shutdown*"]\n' >> ~/.config/sx/config.toml`
+Enter
 Type "clear"
 Enter
 Type "sx"
 Enter
 Sleep 2.5s
+# Tag the selected host (the one used last) with the only environment.
+Ctrl+T
+Sleep 500ms
 Show
 
 Sleep 500ms
@@ -56,6 +62,11 @@ Sleep 1s
 Screenshot screens/profiles.png
 Sleep 500ms
 
+Tab
+Sleep 1s
+Screenshot screens/envs.png
+Sleep 500ms
+
 # Leave the TUI, then connect to show the themed prompt.
 Escape
 Sleep 1s
@@ -67,6 +78,9 @@ Sleep 2.5s
 Type "web1"
 Sleep 1s
 Enter
+# prod asks first.
+Sleep 1s
+Type "y"
 Sleep 3s
 Type "sx-theme"
 Enter
