@@ -24,7 +24,7 @@ impl App {
                     Pending::DeleteSnippet(n) => format!("snippet {n}"),
                     Pending::DeleteProfile(n) => format!("profile {n}"),
                 };
-                Line::styled(format!(" Delete {what}? (y/n)"), Style::new().fg(Color::Yellow))
+                Line::styled(format!(" Delete {what}? (y/N)"), Style::new().fg(Color::Yellow))
             }
             Mode::HostSnippets(host) => {
                 Line::styled(format!(" Extra snippets for {host}, on top of its profile"), Style::new().fg(Color::Cyan))
