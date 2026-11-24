@@ -1,4 +1,4 @@
-//! Terminal UI: Hosts (pick and connect), Snippets (edit rc pieces), Profiles (choose snippets).
+//! Terminal UI: Hosts (pick and connect), Snippets (edit rc pieces), Profiles (choose snippets), Envs (prod, staging, ...).
 
 use std::cmp::Ordering;
 use std::io;
@@ -28,7 +28,7 @@ use crate::payload;
 use crate::prompt;
 use crate::ssh_config::{self, HostEntry, Source};
 
-const TAB_TITLES: [&str; 3] = ["Hosts", "Snippets", "Profiles"];
+const TAB_TITLES: [&str; 4] = ["Hosts", "Snippets", "Profiles", "Envs"];
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -36,6 +36,7 @@ enum Tab {
     Hosts,
     Snippets,
     Profiles,
+    Envs,
 }
 
 impl Tab {
@@ -44,7 +45,7 @@ impl Tab {
     }
 
     fn from_index(i: usize) -> Tab {
-        [Tab::Hosts, Tab::Snippets, Tab::Profiles][i % 3]
+        [Tab::Hosts, Tab::Snippets, Tab::Profiles, Tab::Envs][i % 4]
     }
 }
 
@@ -56,12 +57,20 @@ enum InputKind {
     DuplicateSnippet(String),
     /// Holds the name of the profile being copied.
     DuplicateProfile(String),
+    NewEnv,
+    /// Holds the name of the environment being copied.
+    DuplicateEnv(String),
+    /// Holds the name of the environment being renamed.
+    RenameEnv(String),
 }
 
 #[derive(Clone, Debug)]
 enum Pending {
-    DeleteSnippet(String),
-    DeleteProfile(String),
+    Snippet(String),
+    Profile(String),
+    Env(String),
+    /// Holds the ssh arguments of the connection to make.
+    Connect(Vec<String>),
 }
 
 #[derive(Clone, Debug)]
@@ -97,6 +106,8 @@ struct Hits {
     prof_list: Rect,
     /// The two terminal switches under the profile list: the title row, then the marks row.
     prof_term: Rect,
+    env_list: Rect,
+    env_fields: Rect,
     prompt_list: Rect,
     chk_list: Rect,
     /// Snippet checklist grid, filled column by column: items per column and width of one cell.
@@ -150,6 +161,12 @@ pub struct App {
     /// Payload size of one profile, so drawing does not rebuild it every frame. Cleared on change.
     payload_cache: Option<(String, Option<usize>)>,
     prof_focus: ProfFocus,
+    /// The Envs tab: the selected environment, which pane has the keyboard, the focused form row and
+    /// the text being typed into it.
+    env_state: ListState,
+    env_focus: envs::EnvFocus,
+    env_field: usize,
+    env_buf: Editor,
     /// Mouse capture on. Off lets the terminal select text; toggled with F2.
     mouse: bool,
     status: Option<(String, bool)>,
@@ -206,6 +223,10 @@ impl App {
             payload_cache: None,
             mouse: true,
             prof_focus: ProfFocus::List,
+            env_state: ListState::default().with_selected(Some(0)),
+            env_focus: envs::EnvFocus::List,
+            env_field: 0,
+            env_buf: Editor::from_text(""),
             status: None,
             quit: false,
             hits: Hits::default(),
@@ -227,6 +248,7 @@ impl App {
             });
         }
         app.load_editor();
+        app.load_env_buf();
         app
     }
 
@@ -266,6 +288,7 @@ impl App {
         self.flush_editor();
         self.editor_focus = false;
         self.prof_focus = ProfFocus::List;
+        self.env_focus = envs::EnvFocus::List;
         self.tab = tab;
     }
 
@@ -304,6 +327,7 @@ impl App {
                     Tab::Hosts => self.on_key_hosts(k, ctrl),
                     Tab::Snippets => self.on_key_snippets(k, ctrl),
                     Tab::Profiles => self.on_key_profiles(k),
+                    Tab::Envs => self.on_key_envs(k),
                 }
             }
         }
@@ -312,7 +336,7 @@ impl App {
     fn global_nav(&mut self, k: KeyEvent) -> bool {
         match k.code {
             KeyCode::Tab => self.switch_tab(Tab::from_index(self.tab.index() + 1)),
-            KeyCode::BackTab => self.switch_tab(Tab::from_index(self.tab.index() + 2)),
+            KeyCode::BackTab => self.switch_tab(Tab::from_index(self.tab.index() + TAB_TITLES.len() - 1)),
             _ => return false,
         }
         true
@@ -326,6 +350,9 @@ impl App {
                 InputKind::NewProfile => self.create_profile(&buf),
                 InputKind::DuplicateSnippet(from) => self.duplicate_snippet(&from, &buf),
                 InputKind::DuplicateProfile(from) => self.duplicate_profile(&from, &buf),
+                InputKind::NewEnv => self.create_env(&buf),
+                InputKind::DuplicateEnv(from) => self.duplicate_env(&from, &buf),
+                InputKind::RenameEnv(from) => self.rename_env(&from, &buf),
             },
             KeyCode::Backspace => {
                 buf.pop();
@@ -344,8 +371,10 @@ impl App {
             return self.say("cancelled");
         }
         match pending {
-            Pending::DeleteSnippet(n) => self.delete_snippet(&n),
-            Pending::DeleteProfile(n) => self.delete_profile(&n),
+            Pending::Snippet(n) => self.delete_snippet(&n),
+            Pending::Profile(n) => self.delete_profile(&n),
+            Pending::Env(n) => self.delete_env(&n),
+            Pending::Connect(args) => self.pending_connect = Some(args),
         }
     }
 
@@ -396,6 +425,7 @@ impl App {
             Tab::Hosts => self.mouse_hosts(x, y, wheel, click),
             Tab::Snippets => self.mouse_snippets(x, y, wheel, click),
             Tab::Profiles => self.mouse_profiles(x, y, wheel, click),
+            Tab::Envs => self.mouse_envs(x, y, wheel, click),
         }
     }
 
@@ -409,6 +439,7 @@ impl App {
             Tab::Hosts => self.draw_hosts(f, body),
             Tab::Snippets => self.draw_snippets(f, body),
             Tab::Profiles => self.draw_profiles(f, body),
+            Tab::Envs => self.draw_envs(f, body),
         }
         match self.mode.clone() {
             Mode::HostSnippets(host) => self.draw_host_snippets(f, body, &host),
@@ -450,6 +481,7 @@ impl App {
 
 }
 
+mod envs;
 mod footer;
 mod hostedit;
 mod hosts;

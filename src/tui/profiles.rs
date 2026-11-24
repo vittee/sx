@@ -250,7 +250,7 @@ impl App {
             }
             KeyCode::Char('d') if ctrl => {
                 if let Some(p) = self.selected_profile() {
-                    self.mode = Mode::Confirm(Pending::DeleteProfile(p));
+                    self.mode = Mode::Confirm(Pending::Profile(p));
                 }
             }
             KeyCode::Char('g') if ctrl => {

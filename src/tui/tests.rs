@@ -1,4 +1,4 @@
-use super::hosts::{COL_ALIAS, COL_PROFILE, COL_SOURCE, COL_STAR, COL_TARGET, Cols, fuzzy, sort_key_at};
+use super::hosts::{COL_ALIAS, COL_ENV, COL_PROFILE, COL_SOURCE, COL_STAR, COL_TARGET, Cols, fuzzy, sort_key_at};
 use super::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -26,6 +26,13 @@ fn app_with(hosts: Vec<HostEntry>) -> (tempfile::TempDir, App) {
     (tmp, app)
 }
 
+/// Adds every environment template, as a user who created them in the Envs tab would have.
+fn with_envs(app: &mut App) {
+    for (name, env) in config::env_templates() {
+        app.cfg.add_env(name, env).unwrap();
+    }
+}
+
 fn ctrl(app: &mut App, c: char) {
     app.on_event(Event::Key(KeyEvent {
         code: KeyCode::Char(c),
@@ -48,8 +55,9 @@ fn click_header(app: &mut App, key: SortKey) {
         SortKey::Host => COL_STAR + 1,
         SortKey::Target => COL_STAR + COL_ALIAS + 1,
         SortKey::Profile => COL_STAR + COL_ALIAS + COL_TARGET + 1,
-        SortKey::Source => COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + 1,
-        SortKey::LastUsed => COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_SOURCE + 1,
+        SortKey::Env => COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + 1,
+        SortKey::Source => COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_ENV + 1,
+        SortKey::LastUsed => COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_ENV + COL_SOURCE + 1,
     };
     click(app, head.x + x, head.y);
 }
@@ -213,26 +221,6 @@ fn typing_narrows_the_jump_host_list() {
 }
 
 #[test]
-fn likely_jump_hosts_come_first_in_the_picker() {
-    let (_t, mut a) = app();
-    let entry = |alias: &str| HostEntry { alias: alias.into(), hostname: None, user: None, port: None, source: a.hosts[0].source.clone() };
-    a.hosts = vec![entry("db1"), entry("app"), entry("edge-bastion"), entry("hub"), entry("web")];
-    // `hub` is not named like a jump host, but another host already goes through it.
-    a.cfg.hosts.entry("web".into()).or_default().options.insert("via".into(), config::ConnOptions { jump: "me@hub:22".into(), ..Default::default() });
-    ctrl(&mut a, 'o');
-    for _ in 0..3 {
-        key(&mut a, KeyCode::Down);
-    }
-    ctrl(&mut a, 'k');
-    render(&mut a);
-    let names: Vec<String> = a.hits.form_keylist.iter().map(|(_, n)| n.clone()).collect();
-    let this = a.selected_host().map(|i| a.hosts[i].alias.clone()).unwrap();
-    let rest = ["app", "db1", "web"].into_iter().filter(|n| *n != this);
-    let want: Vec<&str> = ["hub", "edge-bastion"].into_iter().filter(|n| *n != this).chain(rest).collect();
-    assert_eq!(names, want);
-}
-
-#[test]
 fn the_hints_do_not_move_when_the_key_hint_appears() {
     let (_t, _s, mut a) = app_with_keys();
     ctrl(&mut a, 'o');
@@ -284,7 +272,7 @@ fn columns_grow_with_long_names_when_the_terminal_is_wide() {
 fn spare_width_is_shared_in_proportion_to_what_each_column_lacks() {
     let min = Cols::default();
     // Room for 15 more characters only: the host column lacks 20, the target 10, the profile nothing.
-    let width = COL_STAR + COL_SOURCE + 12 + min.alias + min.target + min.profile + 15;
+    let width = COL_STAR + COL_ENV + COL_SOURCE + 12 + min.alias + min.target + min.profile + 15;
     let c = Cols::fit(width, [min.alias + 20, min.target + 10, 0]);
     assert!(c.alias > min.alias && c.target > min.target && c.profile == min.profile, "{c:?}");
     assert!(c.alias + c.target + c.profile <= min.alias + min.target + min.profile + 15);
@@ -442,9 +430,11 @@ fn tab_key_cycles_tabs() {
     key(&mut app, KeyCode::Tab);
     assert_eq!(app.tab, Tab::Profiles);
     key(&mut app, KeyCode::Tab);
+    assert_eq!(app.tab, Tab::Envs);
+    key(&mut app, KeyCode::Tab);
     assert_eq!(app.tab, Tab::Hosts);
     key(&mut app, KeyCode::BackTab);
-    assert_eq!(app.tab, Tab::Profiles);
+    assert_eq!(app.tab, Tab::Envs);
 }
 
 #[test]
@@ -1215,6 +1205,8 @@ fn ctrl_s_cycles_and_ctrl_r_reverses() {
     ctrl(&mut app, 's'); // moving to the next key resets the direction
     assert_eq!((app.cfg.sort, app.cfg.sort_reverse), (SortKey::Profile, false));
     ctrl(&mut app, 's');
+    assert_eq!(app.cfg.sort, SortKey::Env);
+    ctrl(&mut app, 's');
     assert_eq!(app.cfg.sort, SortKey::Source);
     ctrl(&mut app, 's');
     assert_eq!(app.cfg.sort, SortKey::LastUsed);
@@ -1306,8 +1298,9 @@ fn sort_key_columns_map_correctly() {
     assert_eq!(sort_key_at(COL_STAR, c), SortKey::Host);
     assert_eq!(sort_key_at(COL_STAR + COL_ALIAS, c), SortKey::Target);
     assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET, c), SortKey::Profile);
-    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE, c), SortKey::Source);
-    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_SOURCE, c), SortKey::LastUsed);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE, c), SortKey::Env);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_ENV, c), SortKey::Source);
+    assert_eq!(sort_key_at(COL_STAR + COL_ALIAS + COL_TARGET + COL_PROFILE + COL_ENV + COL_SOURCE, c), SortKey::LastUsed);
     // A wider host column pushes the others right.
     let wide = Cols { alias: 40, ..c };
     assert_eq!(sort_key_at(COL_STAR + COL_ALIAS, wide), SortKey::Host);
@@ -2033,9 +2026,225 @@ fn the_pick_hint_lights_up_only_when_the_host_has_named_options() {
 }
 
 #[test]
+fn ctrl_t_takes_the_suggestion_first_and_then_moves_through_the_environments() {
+    let (_t, mut app) = app_with(vec![host("web-prod-1", "10.0.0.1"), host("alpha", "10.0.0.2")]);
+    with_envs(&mut app);
+    typed(&mut app, "prod");
+    assert_eq!(order(&app), ["web-prod-1"]);
+    assert!(render(&mut app).contains("prod?"), "the name matches a pattern, so prod is suggested");
+
+    ctrl(&mut app, 't');
+    assert_eq!(app.cfg.hosts["web-prod-1"].env.as_deref(), Some("prod"), "the suggestion is taken");
+    let screen = render(&mut app);
+    assert!(screen.contains(" PROD ") && !screen.contains("prod?"), "{screen}");
+
+    ctrl(&mut app, 't');
+    assert_eq!(app.cfg.hosts["web-prod-1"].env.as_deref(), Some("sit"), "then the next environment in name order");
+    let saved = std::fs::read_to_string(app.dir.join("config.toml")).unwrap();
+    assert!(saved.contains("env = \"sit\""), "{saved}");
+
+    // `alpha` has no suggestion, so Ctrl-T starts at the first environment.
+    app.set_filter("alpha");
+    ctrl(&mut app, 't');
+    assert_eq!(app.cfg.hosts["alpha"].env.as_deref(), Some("dev"));
+}
+
+#[test]
+fn a_click_on_the_env_cell_tags_the_host() {
+    let (_t, mut app) = app_with(vec![host("web-prod-1", "10.0.0.1")]);
+    with_envs(&mut app);
+    render(&mut app);
+    let list = app.hits.hosts_list;
+    let cols = app.hits.cols;
+    click(&mut app, list.x + COL_STAR + cols.alias + cols.target + cols.profile + 1, list.y);
+    assert_eq!(app.cfg.hosts["web-prod-1"].env.as_deref(), Some("prod"));
+}
+
+#[test]
+fn the_host_list_sorts_by_environment_with_untagged_hosts_last() {
+    let (_t, mut app) = app_with(vec![host("a", "10.0.0.1"), host("b", "10.0.0.2"), host("c", "10.0.0.3"), host("d", "10.0.0.4")]);
+    with_envs(&mut app);
+    app.cfg.set_env("d", Some("dev"));
+    app.cfg.set_env("b", Some("prod"));
+    app.cfg.set_env("c", Some("dev"));
+    app.cfg.sort = SortKey::Env;
+    assert_eq!(order(&app), ["c", "d", "b", "a"], "dev, dev, prod, then untagged");
+    app.cfg.sort_reverse = true;
+    assert_eq!(order(&app), ["a", "b", "d", "c"]);
+}
+
+#[test]
+fn a_badge_uses_the_color_of_its_environment() {
+    let (_t, mut app) = app_with(vec![host("web1", "10.0.0.1")]);
+    with_envs(&mut app);
+    app.cfg.set_env("web1", Some("prod"));
+    let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let buf = term.backend().buffer();
+    let list = app.hits.hosts_list;
+    let x = list.x + COL_STAR + app.hits.cols.alias + app.hits.cols.target + app.hits.cols.profile + 1;
+    let cell = &buf[(x, list.y)];
+    assert_eq!((cell.bg, cell.fg), (Color::Indexed(1), Color::White), "prod is red with white text");
+}
+
+fn open_envs(app: &mut App) {
+    while app.tab != Tab::Envs {
+        key(app, KeyCode::Tab);
+    }
+}
+
+#[test]
+fn the_envs_tab_starts_empty_and_a_template_name_starts_from_the_template() {
+    let (_t, mut app) = app();
+    open_envs(&mut app);
+    let screen = render(&mut app);
+    assert!(screen.contains("No environments yet") && screen.contains("prod"), "{screen}");
+
+    ctrl(&mut app, 'n');
+    assert!(render(&mut app).contains("new environment name"));
+    typed(&mut app, "prod");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.cfg.envs["prod"].color, "red");
+    assert_eq!(app.cfg.envs["prod"].patterns, ["*prod*", "*prd*"]);
+    let screen = render(&mut app);
+    assert!(screen.contains("PROD") && screen.contains("me@host"), "{screen}");
+
+    // any other name starts blank
+    ctrl(&mut app, 'n');
+    typed(&mut app, "eu-west");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.cfg.envs["eu-west"], config::Env::new("white", &[]));
+    assert_eq!(app.selected_env().as_deref(), Some("eu-west"));
+    let saved = std::fs::read_to_string(app.dir.join("config.toml")).unwrap();
+    assert!(saved.contains("[envs.eu-west]") && saved.contains("[envs.prod]"), "{saved}");
+
+    ctrl(&mut app, 'n');
+    typed(&mut app, "prod");
+    key(&mut app, KeyCode::Enter);
+    assert!(render(&mut app).contains("environment prod exists"));
+    ctrl(&mut app, 'n');
+    typed(&mut app, "bad name");
+    key(&mut app, KeyCode::Enter);
+    assert!(!app.cfg.envs.contains_key("bad name"));
+}
+
+#[test]
+fn an_environment_is_edited_in_the_form_and_saved_as_you_type() {
+    let (_t, mut app) = app();
+    open_envs(&mut app);
+    ctrl(&mut app, 'n');
+    typed(&mut app, "qa");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter); // into the form, on the label
+    typed(&mut app, "Quality");
+    assert_eq!(app.cfg.envs["qa"].label, "Quality");
+    typed(&mut app, "abcdefghijklmnopqrstuvwxyz");
+    assert_eq!(app.cfg.envs["qa"].label.chars().count(), config::MAX_LABEL, "the label stops at its longest");
+    for _ in 0..config::MAX_LABEL {
+        key(&mut app, KeyCode::Backspace);
+    }
+    typed(&mut app, "Quality");
+    key(&mut app, KeyCode::Down);
+    for _ in 0..5 {
+        key(&mut app, KeyCode::Backspace);
+    }
+    typed(&mut app, "#00aaff");
+    assert_eq!(app.cfg.envs["qa"].color, "#00aaff");
+    key(&mut app, KeyCode::Down);
+    typed(&mut app, "qa-*, *-qa");
+    assert_eq!(app.cfg.envs["qa"].patterns, ["qa-*", "*-qa"]);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Char(' '));
+    assert!(!app.cfg.envs["qa"].has(config::FEATURE_BADGE));
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    assert!(!app.cfg.envs["qa"].has(config::FEATURE_TITLE));
+    key(&mut app, KeyCode::Char(' '));
+    assert!(app.cfg.envs["qa"].has(config::FEATURE_TITLE));
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Char(' '));
+    assert!(app.cfg.envs["qa"].has(config::FEATURE_CONFIRM));
+
+    app.cfg.envs.get_mut("qa").unwrap().color = "pink".into();
+    assert!(render(&mut app).contains("not a color"));
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(app.env_focus, envs::EnvFocus::List);
+    assert_eq!(app.tab, Tab::Envs);
+}
+
+#[test]
+fn an_environment_is_copied_renamed_and_deleted_and_the_hosts_follow() {
+    let (_t, mut app) = app_with(vec![host("web-prod-1", "10.0.0.1"), host("alpha", "10.0.0.2")]);
+    with_envs(&mut app);
+    app.cfg.set_env("alpha", Some("prod"));
+    open_envs(&mut app);
+    app.env_state.select(app.env_names().iter().position(|n| n == "prod"));
+    let screen = render(&mut app);
+    assert!(screen.contains("tagged hosts") && screen.contains("alpha"), "{screen}");
+    assert!(screen.contains("matching hosts") && screen.contains("not tagged yet"), "{screen}");
+    assert!(screen.contains("web-prod-1"), "a host that only matches the patterns is listed too");
+
+    ctrl(&mut app, 'y');
+    assert!(render(&mut app).contains("copy of environment prod as"));
+    key(&mut app, KeyCode::Enter); // prod-copy
+    assert_eq!(app.cfg.envs["prod-copy"], app.cfg.envs["prod"]);
+
+    app.env_state.select(app.env_names().iter().position(|n| n == "prod"));
+    ctrl(&mut app, 'r');
+    for _ in 0..4 {
+        key(&mut app, KeyCode::Backspace);
+    }
+    typed(&mut app, "live");
+    key(&mut app, KeyCode::Enter);
+    assert!(!app.cfg.envs.contains_key("prod") && app.cfg.envs.contains_key("live"));
+    assert_eq!(app.cfg.hosts["alpha"].env.as_deref(), Some("live"));
+
+    ctrl(&mut app, 'd');
+    assert!(render(&mut app).contains("Delete environment live?"));
+    key(&mut app, KeyCode::Char('n'));
+    assert!(app.cfg.envs.contains_key("live"), "anything but y cancels");
+    ctrl(&mut app, 'd');
+    key(&mut app, KeyCode::Char('y'));
+    assert!(!app.cfg.envs.contains_key("live"));
+    assert_eq!(app.cfg.hosts["alpha"].env, None, "hosts lose a deleted environment");
+}
+
+#[test]
+fn the_mouse_picks_an_environment_and_a_form_row() {
+    let (_t, mut app) = app();
+    with_envs(&mut app);
+    open_envs(&mut app);
+    render(&mut app);
+    let (list, fields) = (app.hits.env_list, app.hits.env_fields);
+    click(&mut app, list.x + 2, list.y + 1);
+    assert_eq!(app.env_state.selected(), Some(1));
+    let name = app.selected_env().unwrap();
+    assert!(app.cfg.envs[&name].has(config::FEATURE_BADGE));
+    click(&mut app, fields.x + 2, fields.y + 3); // the name of the badge switch
+    assert_eq!(app.env_focus, envs::EnvFocus::Fields);
+    assert_eq!(app.env_field, 3);
+    assert!(app.cfg.envs[&name].has(config::FEATURE_BADGE), "the name does not switch");
+    click(&mut app, fields.x + 25, fields.y + 3); // the text after the checkbox
+    assert!(app.cfg.envs[&name].has(config::FEATURE_BADGE), "nor does the description");
+    click(&mut app, fields.x + 19, fields.y + 3); // the checkbox
+    assert!(!app.cfg.envs[&name].has(config::FEATURE_BADGE));
+    click(&mut app, fields.x + 2, fields.y + 1);
+    assert_eq!(app.env_field, 1);
+}
+
+#[test]
+fn ctrl_t_without_any_environment_says_where_to_make_one() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 't');
+    assert!(render(&mut app).contains("Envs tab"));
+    assert_eq!(app.cfg.hosts.get("alpha").and_then(|h| h.env.clone()), None);
+}
+
+#[test]
 fn the_list_pages_use_ctrl_keys_and_plain_letters_do_nothing() {
     let (_tmp, mut app) = app();
-    for tab in [Tab::Snippets, Tab::Profiles] {
+    with_envs(&mut app);
+    for tab in [Tab::Snippets, Tab::Profiles, Tab::Envs] {
         app.switch_tab(tab);
         for c in ['n', 'c', 'd', 'r', 'e', 'y', '*'] {
             key(&mut app, KeyCode::Char(c));
@@ -2063,6 +2272,26 @@ fn the_footer_shows_tab_on_every_page_and_esc_goes_back_one_pane_in_profiles() {
     assert_eq!(app.prof_focus, ProfFocus::Prompt, "Esc goes back one pane, like Left");
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.prof_focus, ProfFocus::List);
+}
+
+#[test]
+fn likely_jump_hosts_come_first_in_the_picker() {
+    let (_t, mut a) = app();
+    let entry = |alias: &str| HostEntry { alias: alias.into(), hostname: None, user: None, port: None, source: a.hosts[0].source.clone() };
+    a.hosts = vec![entry("db1"), entry("app"), entry("edge-bastion"), entry("hub"), entry("web")];
+    // `hub` is not named like a jump host, but another host already goes through it.
+    a.cfg.hosts.entry("web".into()).or_default().options.insert("via".into(), config::ConnOptions { jump: "me@hub:22".into(), ..Default::default() });
+    ctrl(&mut a, 'o');
+    for _ in 0..3 {
+        key(&mut a, KeyCode::Down);
+    }
+    ctrl(&mut a, 'k');
+    render(&mut a);
+    let names: Vec<String> = a.hits.form_keylist.iter().map(|(_, n)| n.clone()).collect();
+    let this = a.selected_host().map(|i| a.hosts[i].alias.clone()).unwrap();
+    let rest = ["app", "db1", "web"].into_iter().filter(|n| *n != this);
+    let want: Vec<&str> = ["hub", "edge-bastion"].into_iter().filter(|n| *n != this).chain(rest).collect();
+    assert_eq!(names, want);
 }
 
 #[test]
@@ -2320,4 +2549,84 @@ fn an_empty_search_marks_nothing_and_fuzzy_positions_are_the_first_matches() {
     let list = app.hits.hosts_list;
     let buf = term.backend().buffer();
     assert!((list.x..list.right()).all(|x| buf[(x, list.y)].style().fg != Some(Color::Yellow) || x < list.x + hosts::COL_STAR));
+}
+
+#[test]
+fn an_environment_that_confirms_asks_before_connecting_and_others_do_not() {
+    let (_t, mut app) = app();
+    app.cfg.add_env("live", config::Env { features: vec![config::FEATURE_CONFIRM.to_string()], ..config::Env::new("red", &[]) }).unwrap();
+    app.cfg.add_env("qa", config::Env::new("blue", &[])).unwrap();
+    app.cfg.set_env("beta", Some("live"));
+    app.cfg.set_env("alpha", Some("qa"));
+
+    typed(&mut app, "alp");
+    render(&mut app);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.pending_connect, Some(vec!["alpha".to_string()]), "qa does not ask");
+
+    app.pending_connect = None;
+    app.set_filter("");
+    typed(&mut app, "bet");
+    render(&mut app);
+    key(&mut app, KeyCode::Enter);
+    assert!(app.pending_connect.is_none(), "waits for the answer");
+    assert!(squash(&render(&mut app)).contains("Connect to beta (LIVE)? (y/N)"));
+    key(&mut app, KeyCode::Enter);
+    assert!(app.pending_connect.is_none(), "anything but y cancels");
+    assert!(matches!(app.mode, Mode::Normal));
+
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Char('y'));
+    assert_eq!(app.pending_connect, Some(vec!["beta".to_string()]));
+}
+
+#[test]
+fn connecting_with_saved_options_asks_too() {
+    let (_t, mut app) = app();
+    app.cfg.add_env("live", config::Env { features: vec![config::FEATURE_CONFIRM.to_string()], ..config::Env::new("red", &[]) }).unwrap();
+    app.cfg.set_env("alpha", Some("live"));
+    app.connect_with_options("alpha", None);
+    assert!(app.pending_connect.is_none());
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Connect(_))));
+    key(&mut app, KeyCode::Char('y'));
+    assert_eq!(app.pending_connect, Some(vec!["alpha".to_string()]));
+}
+
+#[test]
+fn the_cursor_moves_in_a_text_row_of_the_environment_form() {
+    let (_t, mut app) = app();
+    open_envs(&mut app);
+    ctrl(&mut app, 'n');
+    typed(&mut app, "qa");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter); // into the form, on the label
+    typed(&mut app, "ACE");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    typed(&mut app, "B");
+    assert_eq!(app.cfg.envs["qa"].label, "ABCE", "typed in the middle");
+    key(&mut app, KeyCode::Right);
+    typed(&mut app, "D");
+    assert_eq!(app.cfg.envs["qa"].label, "ABCDE");
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Delete);
+    assert_eq!(app.cfg.envs["qa"].label, "BCDE", "Delete removes the character after the cursor");
+    key(&mut app, KeyCode::End);
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.cfg.envs["qa"].label, "BCD");
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.cfg.envs["qa"].label, "BCD", "nothing before the first character");
+    // the arrows stay in the row and Esc leaves the form
+    assert_eq!(app.env_focus, envs::EnvFocus::Fields);
+    // a label that is full still lets a character be replaced
+    key(&mut app, KeyCode::End);
+    for _ in 0..20 {
+        key(&mut app, KeyCode::Char('x'));
+    }
+    assert_eq!(app.cfg.envs["qa"].label.chars().count(), config::MAX_LABEL);
+    key(&mut app, KeyCode::Backspace);
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Char('Z'));
+    assert!(app.cfg.envs["qa"].label.contains('Z'), "{}", app.cfg.envs["qa"].label);
 }

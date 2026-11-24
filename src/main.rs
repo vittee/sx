@@ -100,6 +100,10 @@ fn main() -> ExitCode {
         println!("ssh {}", ssh_args.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>().join(" "));
         return ExitCode::SUCCESS;
     }
+    if !connect_confirmed(&host) {
+        eprintln!("sx: cancelled");
+        return ExitCode::from(1);
+    }
     if let Some(dir) = config::config_dir() {
         mark_used(&dir, &host);
     }
@@ -127,6 +131,21 @@ fn take_options(args: &mut Vec<String>) -> Result<Option<String>, String> {
         }
     }
     Ok(name)
+}
+
+/// Asks before connecting to a host whose environment has the `confirm` feature. Without a terminal
+/// to ask on (a script, a pipe) it does not ask, since nobody could answer.
+fn connect_confirmed(host: &str) -> bool {
+    use std::io::{BufRead, IsTerminal, Write};
+    let Some(cfg) = config::config_dir().and_then(|d| config::Config::load(&d).ok()) else { return true };
+    let Some(label) = cfg.confirm_label(&host_key(&cfg, host)) else { return true };
+    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        return true;
+    }
+    eprint!("sx: connect to {host} ({label})? (y/N) ");
+    let _ = std::io::stderr().flush();
+    let mut answer = String::new();
+    std::io::stdin().lock().read_line(&mut answer).is_ok() && matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 /// Records that `host` was connected to, so "last used" in the TUI counts connections made from the
@@ -356,7 +375,7 @@ fn load_payload(host: &str) -> Result<Option<String>, String> {
         log::info(format!("created snippet presets in {}", dir.display()));
     }
     let Some(profile) = profile_for_target(&cfg, host) else { return Ok(None) };
-    let rc = config::build_rc_for_host(&dir, &cfg, profile, &host_key(&cfg, host));
+    let rc = config::build_rc_for_host(&dir, &cfg, profile, &host_key(&cfg, host), config::terminal_truecolor());
     if rc.trim().is_empty() {
         return Ok(None);
     }

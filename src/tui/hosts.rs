@@ -17,6 +17,9 @@ pub(super) const COL_SOURCE: u16 = 12;
 
 const COL_USED: u16 = 12;
 
+/// The environment (`prod`, ...). A label longer than this is cut.
+pub(super) const COL_ENV: u16 = 10;
+
 /// The widths of the columns that adapt to the terminal and the hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Cols {
@@ -37,7 +40,7 @@ impl Cols {
     pub(super) fn fit(width: u16, want: [u16; 3]) -> Cols {
         let min = Cols::default();
         let min = [min.alias, min.target, min.profile];
-        let room = width.saturating_sub(COL_STAR + COL_SOURCE + COL_USED);
+        let room = width.saturating_sub(COL_STAR + COL_ENV + COL_SOURCE + COL_USED);
         let extra = u32::from(room.saturating_sub(min.iter().sum()));
         let lack: Vec<u32> = (0..3).map(|i| u32::from(want[i].saturating_sub(min[i]))).collect();
         let total: u32 = lack.iter().sum();
@@ -51,15 +54,18 @@ pub(super) fn sort_key_at(col: u16, cols: Cols) -> SortKey {
     let host = COL_STAR;
     let target = host + cols.alias;
     let profile = target + cols.target;
-    let source = profile + cols.profile;
+    let env = profile + cols.profile;
+    let source = env + COL_ENV;
     if col < host {
         SortKey::Smart
     } else if col < target {
         SortKey::Host
     } else if col < profile {
         SortKey::Target
-    } else if col < source {
+    } else if col < env {
         SortKey::Profile
+    } else if col < source {
+        SortKey::Env
     } else if col < source + COL_SOURCE {
         SortKey::Source
     } else {
@@ -170,6 +176,11 @@ impl App {
         let by_name = || ha.alias.to_lowercase().cmp(&hb.alias.to_lowercase());
         let used = |p: Option<&config::HostPrefs>| p.and_then(|p| p.last_used);
         let profile = |h: &HostEntry| self.cfg.profile_for(&h.alias).unwrap_or("off").to_string();
+        // Hosts without an environment come after the ones that have one.
+        let env_rank = |h: &HostEntry| {
+            let tag = self.cfg.env_of(&h.alias).map(|(n, _)| n.to_string());
+            (tag.is_none(), tag.unwrap_or_default())
+        };
         let reverse = self.cfg.sort_reverse;
         let directed = |o: Ordering| if reverse { o.reverse() } else { o };
 
@@ -186,6 +197,7 @@ impl App {
                 self.target_of(ha).to_lowercase().cmp(&self.target_of(hb).to_lowercase()).then_with(by_name),
             ),
             SortKey::Profile => directed(profile(ha).cmp(&profile(hb)).then_with(by_name)),
+            SortKey::Env => directed(env_rank(ha).cmp(&env_rank(hb)).then_with(by_name)),
             SortKey::Source => directed(ha.source.label().cmp(hb.source.label()).then_with(by_name)),
             SortKey::LastUsed => match (used(pa), used(pb)) {
                 (Some(x), Some(y)) => directed(y.cmp(&x)).then_with(by_name), // newest first
@@ -282,13 +294,36 @@ impl App {
         } else {
             return;
         };
-        self.pending_connect = Some(args);
+        self.request_connect(args);
+    }
+
+    /// Connects, after a yes when the host's environment asks first.
+    pub(super) fn request_connect(&mut self, args: Vec<String>) {
+        if self.cfg.confirm_label(&crate::host_arg(&args)).is_some() {
+            self.mode = Mode::Confirm(Pending::Connect(args));
+        } else {
+            self.pending_connect = Some(args);
+        }
     }
 
     pub(super) fn cycle_profile_of_selected(&mut self, forward: bool) {
         if let Some(i) = self.selected_host() {
             let alias = self.hosts[i].alias.clone();
             self.cfg.cycle_profile(&alias, forward);
+            self.save_cfg();
+        }
+    }
+
+    /// Tags the selected host with an environment. An untagged host with a suggestion (its name
+    /// matches a pattern) takes the suggestion, otherwise the tag moves to the next environment.
+    pub(super) fn tag_env_of_selected(&mut self) {
+        if let Some(i) = self.selected_host() {
+            let alias = self.hosts[i].alias.clone();
+            match self.cfg.suggest_env(&alias).map(String::from).filter(|_| self.cfg.env_of(&alias).is_none()) {
+                Some(name) => self.cfg.set_env(&alias, Some(&name)),
+                None if self.cfg.envs.is_empty() => return self.fail("no environments yet: create one in the Envs tab"),
+                None => self.cfg.cycle_env(&alias, true),
+            }
             self.save_cfg();
         }
     }
@@ -368,6 +403,7 @@ impl App {
             KeyCode::Char('f') if ctrl => self.toggle_favorite_of_selected(),
             KeyCode::Char('p') if ctrl => self.cycle_profile_of_selected(true),
             KeyCode::Char('e') if ctrl => self.open_host_snippets(),
+            KeyCode::Char('t') if ctrl => self.tag_env_of_selected(),
             KeyCode::Char('o') if ctrl => self.open_host_options(),
             KeyCode::Char('l') if ctrl => self.open_options_picker(),
             KeyCode::Char('s') if ctrl => self.cycle_sort(),
@@ -426,6 +462,8 @@ impl App {
             self.toggle_favorite_of_selected();
         } else if (COL_STAR + cols.alias + cols.target..COL_STAR + cols.alias + cols.target + cols.profile).contains(&col) {
             self.cycle_profile_of_selected(true);
+        } else if (COL_STAR + cols.alias + cols.target + cols.profile..COL_STAR + cols.alias + cols.target + cols.profile + COL_ENV).contains(&col) {
+            self.tag_env_of_selected();
         } else if self.is_double_click(Tab::Hosts, i) {
             self.connect_selected();
         }
@@ -558,6 +596,7 @@ impl App {
                         truncate(profile, cols.profile),
                         Style::new().fg(if off { Color::DarkGray } else { Color::Green }),
                     ),
+                    self.env_cell(&h.alias),
                     Span::styled(truncate(h.source.label(), COL_SOURCE), Style::new().add_modifier(Modifier::DIM)),
                     Span::styled(used, Style::new().add_modifier(Modifier::DIM)),
                 ]);
@@ -596,6 +635,21 @@ impl App {
             _ => (" History ".to_string(), vec![Line::styled("select a host", Style::new().add_modifier(Modifier::DIM))]),
         };
         f.render_widget(Paragraph::new(lines).block(Block::bordered().title(title)), area);
+    }
+
+    /// The environment of a host as a colored badge. An untagged host whose name matches a pattern
+    /// shows the suggestion in dim text with a `?`, which Ctrl-T accepts.
+    fn env_cell(&self, alias: &str) -> Span<'static> {
+        if let Some((name, env)) = self.cfg.env_of(alias) {
+            let text = truncate(&format!(" {} ", env.label_for(name)), COL_ENV);
+            let style = super::envs::badge_style(&env.color);
+            let pad = " ".repeat(COL_ENV.saturating_sub(text.chars().count() as u16 + 1) as usize);
+            return Span::styled(format!("{text}{pad}"), style);
+        }
+        match self.cfg.suggest_env(alias) {
+            Some(name) => Span::styled(truncate(&format!("{name}?"), COL_ENV), Style::new().add_modifier(Modifier::DIM)),
+            None => Span::raw(truncate("", COL_ENV)),
+        }
     }
 
     /// `base`, or `base+N` when the host has N extra snippets.
@@ -645,6 +699,7 @@ impl App {
             cell(SortKey::Host, "host", self.hits.cols.alias),
             cell(SortKey::Target, "target", self.hits.cols.target),
             cell(SortKey::Profile, "profile", self.hits.cols.profile),
+            cell(SortKey::Env, "env", COL_ENV),
             cell(SortKey::Source, "source", COL_SOURCE),
             cell(SortKey::LastUsed, "last used", COL_USED),
         ])

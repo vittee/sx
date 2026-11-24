@@ -12,6 +12,12 @@ impl App {
                     InputKind::NewProfile => "new profile name".to_string(),
                     InputKind::DuplicateSnippet(from) => format!("copy of snippet {from} as"),
                     InputKind::DuplicateProfile(from) => format!("copy of profile {from} as"),
+                    InputKind::NewEnv => format!(
+                        "new environment name ({} start from a template)",
+                        config::env_templates().iter().map(|(n, _)| *n).collect::<Vec<_>>().join(" ")
+                    ),
+                    InputKind::DuplicateEnv(from) => format!("copy of environment {from} as"),
+                    InputKind::RenameEnv(from) => format!("rename environment {from} to"),
                 };
                 Line::from(vec![
                     Span::styled(format!(" {label}: "), Style::new().fg(Color::Cyan)),
@@ -19,10 +25,17 @@ impl App {
                     Span::styled("▏", Style::new().fg(Color::Cyan)),
                 ])
             }
+            Mode::Confirm(Pending::Connect(args)) => {
+                let host = crate::host_arg(args);
+                let label = self.cfg.confirm_label(&host).unwrap_or_default();
+                Line::styled(format!(" Connect to {host} ({label})? (y/N)"), Style::new().fg(Color::Yellow))
+            }
             Mode::Confirm(p) => {
                 let what = match p {
-                    Pending::DeleteSnippet(n) => format!("snippet {n}"),
-                    Pending::DeleteProfile(n) => format!("profile {n}"),
+                    Pending::Snippet(n) => format!("snippet {n}"),
+                    Pending::Profile(n) => format!("profile {n}"),
+                    Pending::Env(n) => format!("environment {n}"),
+                    Pending::Connect(_) => String::new(),
                 };
                 Line::styled(format!(" Delete {what}? (y/N)"), Style::new().fg(Color::Yellow))
             }
@@ -59,11 +72,25 @@ impl App {
             (_, Tab::Hosts) => &[
                 ("Enter", "connect"),
                 ("^P", "profile"),
+                ("^T", "env"),
                 ("^E", "extras"),
                 ("^O", "opts"),
                 ("^L", "pick"),
                 ("^F", "fav"),
                 ("^S/R", "sort"),
+                ("Tab", "next"),
+                ("Esc", "quit"),
+            ],
+            (_, Tab::Envs) if self.env_focus == envs::EnvFocus::Fields => {
+                &[("Up/Down", "field"), ("type", "edit"), ("Space", "toggle"), ("Esc", "done")]
+            }
+            (_, Tab::Envs) => &[
+                ("Up/Down", "choose"),
+                ("Enter", "edit"),
+                ("^N", "new"),
+                ("^Y", "copy"),
+                ("^R", "rename"),
+                ("^D", "delete"),
                 ("Tab", "next"),
                 ("Esc", "quit"),
             ],

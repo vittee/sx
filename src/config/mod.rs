@@ -16,9 +16,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::prompt;
 
+mod envs;
 mod presets;
 mod snippets;
 
+pub use envs::*;
 pub use snippets::*;
 use snippets::snippets_dir;
 
@@ -69,6 +71,9 @@ pub struct HostPrefs {
     /// Snippets of its profile that this host does not get.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub without: Vec<String>,
+    /// The environment this host is tagged with (a key of `Config::envs`), such as `prod`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<String>,
     /// The default connection options, which replace the ones from `~/.ssh/config`: ssh `-l`,
     /// `-p`, `-i`, `-J`, and free-form extra arguments. Empty means no override.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -205,6 +210,7 @@ pub enum SortKey {
     Host,
     Target,
     Profile,
+    Env,
     Source,
     LastUsed,
 }
@@ -216,7 +222,8 @@ impl SortKey {
             SortKey::Smart => SortKey::Host,
             SortKey::Host => SortKey::Target,
             SortKey::Target => SortKey::Profile,
-            SortKey::Profile => SortKey::Source,
+            SortKey::Profile => SortKey::Env,
+            SortKey::Env => SortKey::Source,
             SortKey::Source => SortKey::LastUsed,
             SortKey::LastUsed => SortKey::Smart,
         }
@@ -236,6 +243,9 @@ pub struct Config {
     pub default_profile: String,
     #[serde(default)]
     pub profiles: BTreeMap<String, Profile>,
+    /// Environments such as `prod`, see [`Env`]. You create them in the Envs tab or here.
+    #[serde(default)]
+    pub envs: BTreeMap<String, Env>,
     #[serde(default)]
     pub hosts: BTreeMap<String, HostPrefs>,
 }
@@ -252,6 +262,7 @@ impl Default for Config {
             invert_scroll: false,
             default_profile: default_profile_name(),
             profiles: BTreeMap::new(),
+            envs: BTreeMap::new(),
             hosts: BTreeMap::new(),
         }
     }

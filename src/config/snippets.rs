@@ -295,7 +295,9 @@ const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 [ -n \"$__sx_t0\" ] && command -v sx-theme >/dev/null && sx-theme \"$__sx_t0\" 2>/dev/null; unset __sx_t0\n";
 
 /// The server side of terminal integration, built from the profile's two switches: the window
-/// title (`title`) and the prompt marks (`marks`). With both off there is nothing to send.
+/// title (`title`) and the prompt marks (`marks`). `env` is true for a host with an environment,
+/// whose badge goes in the prompt whatever the switches say. With everything off there is
+/// nothing to send.
 ///
 /// The title: the terminal's window and tab title (OSC 0) is set to `[sx] user@host: dir` at every
 /// prompt, so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence.
@@ -304,6 +306,9 @@ const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 /// from anywhere earlier. The code sits inside `PS1` as a command substitution, not in a function,
 /// so it also runs in a shell that did not inherit one, such as the one `sudo -i` starts.
 ///
+/// A host tagged with an environment (see `envs.rs`) also gets `__sx_env_label` in the title, and
+/// `__sx_env_badge`, a colored label, in the prompt right before its `$` or `#` (see `BADGE_FUNCTION`).
+///
 /// The marks: the same hooks mark the prompt for the terminal (OSC 133, "semantic prompt"): `A` starts the
 /// prompt, at the front of `PS1`, `B` ends it, after the title, `C` starts the command's output
 /// (`PS0`, bash 4.4 or newer), and `D;status` ends the command, sent before the next prompt except
@@ -311,17 +316,24 @@ const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 /// mark failed commands. `__sx_ps1` adds the marks to `PS1`, once, also after `sx-theme` replaced it.
 /// `__sx_title` (in `PROMPT_COMMAND`) sends `D`, calls `__sx_ps1`, and returns the status it got so
 /// `$?` is intact.
-fn terminal_block(title: bool, marks: bool) -> String {
-    if !title && !marks {
+fn terminal_block(title: bool, marks: bool, env: bool) -> String {
+    if !title && !marks && !env {
         return String::new();
     }
     let mut out = String::new();
     if title {
         out.push_str(TITLE_COMMAND);
     }
-    // The front of PS1 gets the A mark. Each piece is added once, so the hook can run before every
-    // prompt and also after `sx-theme` replaced PS1.
-    let front = if marks { r#"case $PS1 in *'133;A'*) ;; *) PS1='\[\e]133;A\a\]'$PS1;; esac; "# } else { "" };
+    // The front of PS1: the A mark, with the badge after it. Each piece is added once, so the
+    // hook can run before every prompt and also after `sx-theme` replaced PS1.
+    let mut front = String::new();
+    if marks {
+        front.push_str(r#"case $PS1 in *'133;A'*) ;; *) PS1='\[\e]133;A\a\]'$PS1;; esac; "#);
+    }
+    if env {
+        out.push_str(BADGE_FUNCTION);
+        front.push_str("__sx_badge; ");
+    }
     // The end of PS1: the title, then the B mark.
     let mut back = String::new();
     if title {
@@ -331,7 +343,11 @@ fn terminal_block(title: bool, marks: bool) -> String {
         back.push_str(r"\[\e]133;B\a\]");
     }
     let seen = if marks { "133;B" } else { "__sx_tc" };
-    let tail = format!(r#"case $PS1 in *'{seen}'*) ;; *) PS1="$PS1{back}";; esac; "#);
+    let tail = if back.is_empty() {
+        String::new()
+    } else {
+        format!(r#"case $PS1 in *'{seen}'*) ;; *) PS1="$PS1{back}";; esac; "#)
+    };
     out.push_str(&format!("__sx_ps1() {{ {front}{tail}}}\n"));
     let d_mark = if marks { r#"[ -n "$__sx_seen" ] && printf '\033]133;D;%s\a' "$s"; "# } else { "" };
     out.push_str(&format!("__sx_title() {{ local s=$?; {d_mark}__sx_seen=1; __sx_ps1; return $s; }}\n"));
@@ -344,8 +360,31 @@ fn terminal_block(title: bool, marks: bool) -> String {
     out
 }
 
-/// Sets `__sx_tc`, the command that prints the window title: `[sx] user@host: dir`.
-const TITLE_COMMAND: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$HOME"}";; esac;printf "\033]0;[sx] %s@%s: %s\a" "${USER:-$(id -un)}" "${HOSTNAME%%.*}" "$d"'
+/// Defines `__sx_badge`, which puts the badge in `PS1`, once, right before the prompt symbol: the last
+/// `\$`, or a `$` or `#` that ends the prompt. A badge in front of a prompt of several lines would push
+/// its first line to the right and break the alignment of the lines drawn under it (`╭─` over `╰─`),
+/// and the symbol is on the line you type on. Color codes right before the symbol stay with it. A
+/// space goes before the badge when the text before it ends in a letter, a digit or a closing bracket
+/// (`~/src [PROD] $`), not after a drawing character (`╰─[PROD] $`). A prompt with no symbol gets
+/// the badge at the front.
+pub(super) const BADGE_FUNCTION: &str = r#"__sx_badge() {
+  case $PS1 in *"$__sx_env_badge"*) return;; esac
+  local h=${PS1%\\\$*} t
+  if [ "$h" = "$PS1" ]; then
+    t=${PS1%"${PS1##*[![:space:]]}"}
+    case $t in *'$'|*'#') h=${t%?};; *) PS1=$__sx_env_badge$PS1; return;; esac
+  fi
+  while :; do
+    case $h in *'\]') t=${h%\\\[*}; [ "$t" = "$h" ] && break; h=$t;; *) break;; esac
+  done
+  t=; [[ $h == *[[:alnum:]\]\)~/] ]] && t=' '
+  PS1=$h$t$__sx_env_badge${PS1:${#h}}
+}
+"#;
+
+/// Sets `__sx_tc`, the command that prints the window title: `[sx] user@host: dir`, with the
+/// environment's label before the user when the host has one.
+const TITLE_COMMAND: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$HOME"}";; esac;printf "\033]0;[sx] %s%s@%s: %s\a" "${__sx_env_label:+$__sx_env_label }" "${USER:-$(id -un)}" "${HOSTNAME%%.*}" "$d"'
 "##;
 
 /// Bash that defines `sx-theme`, which switches the prompt in a running session. `sx-theme` lists
@@ -498,12 +537,13 @@ fn info_block(profile: &str, prompt: Option<&str>, plain: &[String], vim: &[Stri
 /// Builds the rc text sent to the server: the profile's snippets (sorted by name), then its prompt
 /// theme. The theme comes last so an explicit choice wins over any `PS1` set in a snippet.
 pub fn build_rc(dir: &Path, cfg: &Config, profile: &str) -> String {
-    build_rc_with(dir, cfg, profile, &[], &[])
+    build_rc_with(dir, cfg, profile, &[], &[], None, false)
 }
 
 /// Like [`build_rc`], plus the extra snippets set for one host.
-pub fn build_rc_for_host(dir: &Path, cfg: &Config, profile: &str, host: &str) -> String {
-    build_rc_with(dir, cfg, profile, cfg.host_snippets(host), cfg.host_without(host))
+/// `truecolor` is whether the local terminal shows 24-bit colors, for the badge of the environment.
+pub fn build_rc_for_host(dir: &Path, cfg: &Config, profile: &str, host: &str, truecolor: bool) -> String {
+    build_rc_with(dir, cfg, profile, cfg.host_snippets(host), cfg.host_without(host), cfg.env_of(host), truecolor)
 }
 
 fn push_block(out: &mut String, title: &str, body: &str) {
@@ -513,7 +553,15 @@ fn push_block(out: &mut String, title: &str, body: &str) {
     }
 }
 
-fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String], without: &[String]) -> String {
+fn build_rc_with(
+    dir: &Path,
+    cfg: &Config,
+    profile: &str,
+    extra: &[String],
+    without: &[String],
+    env: Option<(&str, &super::Env)>,
+    truecolor: bool,
+) -> String {
     let Some(p) = cfg.profiles.get(profile) else { return String::new() };
     let mut out = String::new();
     let wanted = |n: &String| (p.snippets.contains(n) && !without.contains(n)) || extra.contains(n);
@@ -558,9 +606,9 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String], with
         out.push_str("# --- sx-theme ---\n");
         out.push_str(&theme_switcher(dir));
     }
-    let terminal = terminal_block(p.title, p.marks);
+    let terminal = terminal_block(p.title, p.marks, env.is_some());
     if !terminal.is_empty() {
-        push_block(&mut out, "title", &terminal);
+        push_block(&mut out, "title", &format!("{}{terminal}", super::env_shell_vars(env, truecolor)));
     }
     if out.contains("# --- sx-theme ---") {
         push_block(&mut out, "theme from sx-sudo", RESTORE_THEME);

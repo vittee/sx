@@ -35,7 +35,7 @@ fn build_rc_orders_by_name_and_skips_unselected() {
     let (snippets, clip) = rc.split_once("# --- clip ---\n").unwrap();
     assert_eq!(snippets, "# --- 05-first ---\necho first\n# --- 30-last ---\necho last\n");
     assert!(clip.starts_with("clip() {"), "{clip}");
-    assert!(clip.contains("# --- title ---\n__sx_tc='"), "{clip}");
+    assert!(clip.contains("# --- title ---\n__sx_env_badge=''\n__sx_env_label=''\n__sx_tc='"), "{clip}");
 }
 
 #[test]
@@ -155,8 +155,8 @@ fn host_extras_are_added_to_the_profile_and_survive_save_and_load() {
     cfg.toggle_host_snippet("db1", "05-proxy");
     assert_eq!(cfg.host_snippets("db1"), ["05-proxy"]);
     let plain = build_rc(tmp.path(), &cfg, "default");
-    let for_db1 = build_rc_for_host(tmp.path(), &cfg, "default", "db1");
-    let for_other = build_rc_for_host(tmp.path(), &cfg, "default", "web");
+    let for_db1 = build_rc_for_host(tmp.path(), &cfg, "default", "db1", false);
+    let for_other = build_rc_for_host(tmp.path(), &cfg, "default", "web", false);
     assert!(!plain.contains("http_proxy"));
     assert!(for_db1.contains("http_proxy"));
     assert!(for_db1.find("05-proxy").unwrap() < for_db1.find("20-aliases").unwrap(), "sorted by name");
@@ -171,7 +171,7 @@ fn host_extras_are_added_to_the_profile_and_survive_save_and_load() {
 fn a_snippet_in_both_profile_and_host_is_sent_once() {
     let (tmp, mut cfg) = setup();
     cfg.toggle_host_snippet("h", "20-aliases");
-    let rc = build_rc_for_host(tmp.path(), &cfg, "default", "h");
+    let rc = build_rc_for_host(tmp.path(), &cfg, "default", "h", false);
     assert_eq!(rc.matches("# --- 20-aliases ---").count(), 1);
 }
 
@@ -474,7 +474,7 @@ fn the_title_hook_is_sent_last_and_only_once() {
     let (tmp, cfg) = setup();
     let rc = build_rc(tmp.path(), &cfg, "default");
     assert_eq!(rc.matches("__sx_title() {").count(), 1, "{rc}");
-    assert!(rc.contains(r"\033]0;[sx] %s@%s: %s\a"), "{rc}");
+    assert!(rc.contains(r"\033]0;[sx] %s%s@%s: %s\a"), "{rc}");
     assert!(rc.find("# --- title ---").unwrap() > rc.find("# --- prompt: ").unwrap(), "{rc}");
     assert!(rc.contains("return $s; }"), "the hook must keep $?: {rc}");
     assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]\[\e]133;B\a\]""#), "the title goes last in PS1: {rc}");
@@ -594,6 +594,21 @@ fn every_shell_preset_is_created_off_and_comes_back_when_deleted() {
         fs::remove_file(snippets_dir(tmp.path()).join(snippet_file(name))).unwrap();
     }
     assert_eq!(add_missing_presets(tmp.path()).unwrap(), names);
+}
+
+#[test]
+fn a_tagged_host_gets_its_environment_in_the_payload_and_other_hosts_do_not() {
+    let (tmp, mut cfg) = setup();
+    cfg.add_env("prod", Env::new("red", &["*prod*"])).unwrap();
+    cfg.set_env("web-prod-1", Some("prod"));
+    let tagged = build_rc_for_host(tmp.path(), &cfg, "default", "web-prod-1", false);
+    assert!(tagged.contains(r"__sx_env_badge='\[\e[1;97;41m\] PROD \[\e[0m\] '"), "{tagged}");
+    assert!(tagged.contains("__sx_env_label='PROD'"), "{tagged}");
+    let other = build_rc_for_host(tmp.path(), &cfg, "default", "web-prod-2", false);
+    assert!(other.contains("__sx_env_badge=''\n__sx_env_label=''\n"), "{other}");
+    // only a tag counts, the name patterns just suggest
+    assert_eq!(cfg.suggest_env("web-prod-2"), Some("prod"));
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("PROD"));
 }
 
 #[test]
@@ -835,8 +850,8 @@ fn a_host_can_leave_out_a_snippet_of_its_profile() {
     let (tmp, mut cfg) = setup();
     cfg.toggle_host_without("h", "20-aliases");
     assert_eq!(cfg.host_without("h"), ["20-aliases"]);
-    assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "h").contains("# --- 20-aliases ---"));
-    assert!(build_rc_for_host(tmp.path(), &cfg, "default", "other").contains("# --- 20-aliases ---"));
+    assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "h", false).contains("# --- 20-aliases ---"));
+    assert!(build_rc_for_host(tmp.path(), &cfg, "default", "other", false).contains("# --- 20-aliases ---"));
     cfg.save(tmp.path()).unwrap();
     assert_eq!(Config::load(tmp.path()).unwrap().host_without("h"), ["20-aliases"]);
     cfg.forget_snippet("20-aliases");
@@ -949,3 +964,40 @@ fn a_preset_with_a_malformed_version_is_left_alone_and_the_same_version_is_not_r
     assert!(read_snippet(tmp.path(), "colorterm").unwrap().contains("mine"));
     assert!(read_snippet(tmp.path(), "utf8").unwrap().contains("mine"), "equal is not older");
 }
+
+#[test]
+fn the_badge_goes_right_before_the_prompt_symbol() {
+    if !bash_at_least(3, 0) {
+        return;
+    }
+    let _bash = crate::tests::testutil::bash_lock();
+    let run = |ps1: &str| {
+        // the hook runs twice, to see that the badge is added once
+        let script = format!("__sx_env_badge='[B]'\n{}PS1='{ps1}'\n__sx_badge\n__sx_badge\nprintf '%s' \"$PS1\"", snippets::BADGE_FUNCTION);
+        use std::io::Write;
+        let mut child = crate::tests::testutil::bash()
+            .arg("--norc")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).replace('\r', "")
+    };
+    // the symbol of the built-in themes, and a multi-line one
+    assert_eq!(run(r"\u@\h:\w\$ "), r"\u@\h:\w [B]\$ ");
+    assert_eq!(run(r"┌─[\u@\h]\n└─\$ "), r"┌─[\u@\h]\n└─[B]\$ ");
+    // color codes right before the symbol stay with it, and an arrow stays before the badge
+    assert_eq!(run(r"╭─\u\n╰─\[\e[1m\]\$\[\e[0m\] "), r"╭─\u\n╰─[B]\[\e[1m\]\$\[\e[0m\] ");
+    assert_eq!(run(r"╭─\u\n╰─❯ \[\e[1m\]\$ "), r"╭─\u\n╰─❯ [B]\[\e[1m\]\$ ");
+    // a real newline, and a plain $ or # at the end
+    assert_eq!(run("╭─\\u\n╰─\\$ "), "╭─\\u\n╰─[B]\\$ ");
+    assert_eq!(run(r"\u@\h $ "), r"\u@\h [B]$ ");
+    assert_eq!(run(r"\u@\h # "), r"\u@\h [B]# ");
+    // no symbol: the front
+    assert_eq!(run(r"\u@\h> "), r"[B]\u@\h> ");
+}
+

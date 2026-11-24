@@ -23,6 +23,7 @@ Details are under [How it works](#how-it-works).
 - [Prompt themes](#prompt-themes)
 - [Snippet presets](#snippet-presets)
 - [Commands on the server](#commands-on-the-server)
+- [Environments](#environments)
 - [Terminal integration](#terminal-integration)
 - [Limitations](#limitations)
 - [Build](#build)
@@ -101,6 +102,7 @@ so do not put secrets in snippets.
 - [Hosts page](#hosts-page)
 - [Snippets page](#snippets-page)
 - [Profiles page](#profiles-page)
+- [Envs page](#envs-page)
 
 ### Navigation
 
@@ -142,6 +144,7 @@ connection only.
 - `Left`, `Right`, `Delete` and a click move and edit the cursor in the search box.<br>`Up` and `Down` move in the list.
 - `Ctrl-P`, or click on the profile column.<br>The arrow keys only move in the list, so a stray key cannot change a profile.
 - `Ctrl-F`, or click on the star, marks a favorite.
+- `Ctrl-T`, or click on the `env` column, tags the host with an environment such as `prod`, see [Environments](#environments).
 - `Ctrl-E` picks the snippets for the selected host.
   A snippet outside its profile is added as an extra, and one of the profile can be turned off for this host.
   The profile column then reads `default+2-1`, for 2 extras and 1 left out.
@@ -184,6 +187,17 @@ Each profile has its own prompt and snippets.
 - `Ctrl-G` makes it the default
 - Clicking `Window title` or `Prompt marks` in the Terminal box turns it on or off for the profile, see [Terminal integration](#terminal-integration)
 - `Ctrl-E` edits the selected prompt theme
+
+### Envs page
+
+An environment is a name, a color and host name patterns, see [Environments](#environments).
+
+#### Keys
+- `Ctrl-N` creates an environment
+- `Ctrl-Y` copies the selected environment
+- `Ctrl-R` renames it
+- `Ctrl-D` deletes it
+- `Enter` edits it
 
 ## Configurations
 
@@ -336,6 +350,54 @@ It takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-
 
 > A tmux server that is already running keeps its own shells, so quit it first (`tmux kill-server`).
 
+## Environments
+
+An environment marks a group of hosts, such as `prod` or `staging`, so a shell on the wrong one stands out.<br>
+You tag a host with `Ctrl-T` in the host list, and the `env` column shows the tag.<br>
+For a tagged host the server shows a colored label in the prompt (the badge)
+and in the window title, for example `[sx] PROD user@host: dir`.
+The badge sits right before the `$` or `#` of the prompt, so the lines of a prompt that draws a box stay aligned.
+A color name is the terminal's own color, and a number from 0 to 255 is one of the 256 colors.
+A `#rrggbb` color is exact when your terminal shows 24-bit colors (`COLORTERM=truecolor` or `24bit`, or Windows Terminal), and the nearest of the 256 colors otherwise.
+`sx` decides on your side, so the server needs nothing.
+Inside a local tmux it uses the 256 colors, and `SX_TRUECOLOR=1` or `0` overrides the choice.
+
+The patterns only suggest: a host whose name matches one shows the environment dimmed, as `prod?`.<br>
+The first `Ctrl-T` on that host takes the suggestion, and every press after it moves to the next environment, then to none.
+
+You make your own environments, `sx` has none until you do.<br>
+Open the Envs page and press `Ctrl-N`.<br>
+The names `prod`, `staging`, `uat`, `sit` and `dev` start from a template with a color and patterns, any other name starts blank.<br>
+`Ctrl-Y` copies the selected environment, `Ctrl-R` renames it (hosts keep their tag) and `Ctrl-D` deletes it (hosts lose their tag).<br>
+`Enter` opens the form on the right: label, color, host patterns, the three features, with a preview of the badge.<br>
+The tab also lists the hosts tagged with it, and the matching hosts: those not tagged yet whose name fits a host pattern.
+
+Each one is a table in `config.toml`, which you can edit by hand:
+
+```toml
+[envs.prod]
+label = "PROD"                          # text of the badge and the title, up to 16 characters, the name in capitals when left out
+color = "red"                           # a name, a number from 0 to 255, or #rrggbb
+patterns = ["*prod*", "*prd*"]          # * is any text, ? is one character, case is ignored
+features = ["badge", "title", "confirm"]  # what it does
+
+[hosts.web-prod-1]
+env = "prod"
+```
+
+In the form, `Tab`, `Up` and `Down` move between the rows and `Space` switches a feature.<br>
+In a text row `Left`, `Right`, `Home` and `End` move the cursor, `Delete` and `Backspace` remove a character, and a click puts the cursor where you click.<br>
+The host patterns are separated by commas or spaces.
+
+The colors are `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan` and `white`.<br>
+The text is black or white, whichever reads better on the color.<br>
+`features` can hold `badge`, `title` and `confirm`. Leave one out to turn it off for that environment.<br>
+`confirm` is off in a new environment, and on in the `prod` template.<br>
+With `confirm`, `sx` asks `Connect to web-prod-1 (PROD)? (y/N)` before it connects to a host of the environment,
+from the host list and from `sx web-prod-1` in the shell.<br>
+Only `y` goes on. In a shell with no terminal to ask on, such as a script, it does not ask.<br>
+An environment you delete, or a tag that names one that does not exist, does nothing.
+
 ## Terminal integration
 
 `sx` talks to your terminal in two ways, both on by default: the window title and the prompt marks.<br>
@@ -352,6 +414,8 @@ The `[sx]` title on your own machine, while the TUI is open, is not affected.
 ### Window and tab title
 
 `sx` puts `[sx]` in the title of your terminal window or tab, so you can tell which one it is running in.
+
+For a host in an [environment](#environments) it also shows the environment, such as `[sx] PROD user@host: dir`.
 
 ### Prompt marks
 

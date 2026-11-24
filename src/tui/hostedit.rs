@@ -349,7 +349,7 @@ impl App {
             None => p.default_options(),
             Some(name) => p.options.get(name).cloned().unwrap_or_default(),
         });
-        self.pending_connect = Some(self.connect_args(i, prefs.as_ref()));
+        self.request_connect(self.connect_args(i, prefs.as_ref()));
     }
 
     pub(super) fn on_key_host_form(&mut self, k: KeyEvent, mut form: HostForm) {
@@ -428,7 +428,7 @@ impl App {
                             self.save_cfg();
                         }
                         if let Some(i) = self.hosts.iter().position(|h| h.alias == form.host) {
-                            self.pending_connect = Some(self.connect_args(i, Some(&o)));
+                            self.request_connect(self.connect_args(i, Some(&o)));
                         }
                         return;
                     }

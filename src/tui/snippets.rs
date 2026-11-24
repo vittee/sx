@@ -171,7 +171,7 @@ impl App {
             }
             KeyCode::Char('d') if ctrl => {
                 if let Some(name) = self.selected_snippet() {
-                    self.mode = Mode::Confirm(Pending::DeleteSnippet(name));
+                    self.mode = Mode::Confirm(Pending::Snippet(name));
                 }
             }
             KeyCode::Esc => {
