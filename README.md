@@ -193,6 +193,19 @@ Each profile has its own prompt and snippets.
   so names like `10-prompt` and `20-aliases` control the order.<br>
   A snippet in both places is sent once.
 
+A snippet can start with a front matter block, which `sx` never sends to the server:
+
+```
+---
+description: Colored ls and a few aliases
+---
+alias ll='ls -l'
+```
+
+Profiles shows the `description` of the snippet under the cursor, on the bottom border of the Snippets box.<br>
+Other keys are ignored for now.<br>
+Without a front matter block, a first line that is a comment (`#`, or `"` in `.vim` files) is the description.
+
 The prompt theme goes after the snippets, so choosing one overrides any `PS1` a snippet sets.
 A fresh setup starts with the `fino` theme.
 

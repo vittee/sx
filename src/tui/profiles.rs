@@ -347,9 +347,18 @@ impl App {
 
         let focused = self.prof_focus == ProfFocus::Snippets;
         let border = if focused { Color::Cyan } else { Color::Reset };
-        let block = Block::bordered()
+        // The description of the snippet under the cursor, bottom left, cut to the room there is.
+        let names = self.grid_items();
+        let at = self.chk_state.selected().unwrap_or(0).min(names.len().saturating_sub(1));
+        let room = (chk_a.width as usize).saturating_sub(6);
+        let note = names.get(at).filter(|_| focused && room >= 8).and_then(|n| config::snippet_meta(&self.dir, n).description);
+        let mut block = Block::bordered()
             .title(" Snippets ")
             .border_style(Style::new().fg(border));
+        if let Some(d) = note {
+            let text = format!(" {} ", truncate(&d, room as u16).trim_end());
+            block = block.title_bottom(Line::styled(text, Style::new().fg(Color::Gray)));
+        }
         let inner = block.inner(chk_a);
         f.render_widget(block, chk_a);
         self.hits.chk_list = inner;

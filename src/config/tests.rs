@@ -828,3 +828,54 @@ fn sx_tmux_puts_its_default_command_before_your_config_so_yours_wins() {
     let theirs = out.find("source-file -q /etc/tmux.conf").expect("the server config");
     assert!(ours < theirs, "{out}");
 }
+
+#[test]
+fn front_matter_gives_the_description_and_is_never_sent() {
+    let (tmp, cfg) = setup();
+    let text = "---\ndescription: \"Short aliases\"\nauthor: me\n---\nalias ll='ls -l'\n";
+    write_snippet(tmp.path(), "20-aliases", text).unwrap();
+    assert_eq!(snippet_meta(tmp.path(), "20-aliases").description.as_deref(), Some("Short aliases"));
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains("alias ll='ls -l'"), "{rc}");
+    assert!(!rc.contains("description:") && !rc.contains("author:"), "{rc}");
+}
+
+#[test]
+fn without_front_matter_the_first_comment_line_is_the_description() {
+    assert_eq!(parse_meta("a", "# Colored ls\nalias x=y\n").description.as_deref(), Some("Colored ls"));
+    assert_eq!(parse_meta("a.vim", "\" Vim basics\nset number\n").description.as_deref(), Some("Vim basics"));
+    assert_eq!(parse_meta("a.inputrc", "# Tab cycles\n").description.as_deref(), Some("Tab cycles"));
+    assert_eq!(parse_meta("a", "#!/bin/sh\necho\n").description, None, "a shebang is not a description");
+    assert_eq!(parse_meta("a", "alias x=y\n# later\n").description, None, "only the first line counts");
+    assert_eq!(parse_meta("a", "").description, None);
+}
+
+#[test]
+fn front_matter_wins_over_a_comment_and_unknown_keys_are_ignored() {
+    let text = "---\ndescription: From the front matter\nfuture: 1\n---\n# From a comment\n";
+    assert_eq!(parse_meta("a", text).description.as_deref(), Some("From the front matter"));
+    let no_description = "---\nauthor: me\n---\n# From a comment\n";
+    assert_eq!(parse_meta("a", no_description).description, None);
+    assert_eq!(without_front_matter(no_description), "# From a comment\n");
+}
+
+#[test]
+fn front_matter_needs_a_closing_line_and_the_first_line() {
+    let open = "---\ndescription: x\nalias a=b\n";
+    assert_eq!(without_front_matter(open), open, "no closing line: all of it is text");
+    let later = "# hi\n---\ndescription: x\n---\n";
+    assert_eq!(without_front_matter(later), later);
+    assert_eq!(without_front_matter("---\r\ndescription: x\r\n---\r\nbody\r\n"), "body\r\n");
+}
+
+#[test]
+fn front_matter_is_removed_from_vim_and_prompt_snippets_too() {
+    let (tmp, mut cfg) = setup();
+    write_snippet(tmp.path(), "v.vim", "---\ndescription: Numbers\n---\nset number\n").unwrap();
+    cfg.profiles.get_mut("default").unwrap().snippets.push("v.vim".into());
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains("set number") && !rc.contains("description:"), "{rc}");
+    write_snippet(tmp.path(), "p.prompt", "---\ndescription: Mine\n---\nexport PS1='mine> '\n").unwrap();
+    assert!(theme_ps1(tmp.path(), "p.prompt").is_some_and(|p| p.contains("mine> ") && !p.contains("description")));
+    assert!(theme_text(tmp.path(), "p.prompt").is_some_and(|t| !t.contains("description")));
+}

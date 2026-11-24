@@ -283,17 +283,19 @@ impl App {
         });
         let is_vim = self.editor_name.as_deref().is_some_and(|n| config::snippet_kind(n) == config::SnippetKind::Vim);
         let is_inputrc = self.editor_name.as_deref().is_some_and(|n| config::snippet_kind(n) == config::SnippetKind::Inputrc);
-        let kinds = if is_shell {
-            highlight::highlight(&self.editor.lines)
-        } else if is_vim {
-            highlight::highlight_vim(&self.editor.lines)
-        } else if is_inputrc {
-            highlight::highlight_inputrc(&self.editor.lines)
-        } else if is_ps1 {
-            highlight::highlight_ps1(&self.editor.lines)
-        } else {
-            self.editor.lines.iter().map(|l| vec![highlight::Kind::Plain; l.chars().count()]).collect()
-        };
+        let kinds = highlight::with_front_matter(&self.editor.lines, |lines| {
+            if is_shell {
+                highlight::highlight(lines)
+            } else if is_vim {
+                highlight::highlight_vim(lines)
+            } else if is_inputrc {
+                highlight::highlight_inputrc(lines)
+            } else if is_ps1 {
+                highlight::highlight_ps1(lines)
+            } else {
+                lines.iter().map(|l| vec![highlight::Kind::Plain; l.chars().count()]).collect()
+            }
+        });
         let (left, width) = (self.editor.left, ed_inner.width as usize);
         let lines: Vec<Line> = self
             .editor

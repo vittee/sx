@@ -73,6 +73,108 @@ pub fn read_snippet(dir: &Path, name: &str) -> io::Result<String> {
     fs::read_to_string(snippets_dir(dir).join(snippet_file(name)))
 }
 
+/// The `version` of a preset, written `major.minor` in the front matter, such as `1.0`. A copy on disk
+/// is older than the built-in one when its pair is smaller, so `1.2` is newer than `1.0` and `2.0` newer than `1.9`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Version {
+    pub major: u32,
+    pub minor: u32,
+}
+
+impl std::str::FromStr for Version {
+    type Err = ();
+
+    /// Exactly two numbers with a dot between them: `1.0`, not `1` or `1.0.0`.
+    fn from_str(s: &str) -> Result<Version, ()> {
+        let (major, minor) = s.split_once('.').ok_or(())?;
+        let number = |n: &str| if n.chars().all(|c| c.is_ascii_digit()) { n.parse().map_err(|_| ()) } else { Err(()) };
+        Ok(Version { major: number(major)?, minor: number(minor)? })
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+/// What a snippet says about itself, from the front matter at the top of the file:
+///
+/// ```text
+/// ---
+/// description: Colored ls and a few aliases
+/// ---
+/// ```
+///
+/// Only `description` and `version` (of the built-in presets) are known so far, other keys are ignored. The front matter is never sent to
+/// the server. A file without it gets its `description` from a first line that is a comment.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SnippetMeta {
+    pub description: Option<String>,
+    /// The version of a built-in preset, so `sx init --presets` can tell an older copy.
+    pub version: Option<Version>,
+}
+
+/// Splits the front matter off `text`. The front matter is a first line of `---`, `key: value`
+/// lines, and a closing `---`. Without a closing line the text has none.
+fn split_front_matter(text: &str) -> (Option<&str>, &str) {
+    let rest = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let Some(rest) = rest.strip_prefix("---\r\n").or_else(|| rest.strip_prefix("---\n")) else { return (None, text) };
+    let mut at = 0;
+    for line in rest.split_inclusive('\n') {
+        if line.trim_end() == "---" {
+            return (Some(&rest[..at]), &rest[at + line.len()..]);
+        }
+        at += line.len();
+    }
+    (None, text)
+}
+
+/// The text of a snippet without its front matter, which is what the server gets.
+pub fn without_front_matter(text: &str) -> &str {
+    split_front_matter(text).1
+}
+
+/// The comment character of a snippet's first line: `"` in vim files, `#` in the others.
+fn comment_marker(name: &str) -> char {
+    if snippet_kind(name) == SnippetKind::Vim { '"' } else { '#' }
+}
+
+/// Reads the front matter of `text`, or the first line when it is a comment.
+pub fn parse_meta(name: &str, text: &str) -> SnippetMeta {
+    let (front, _) = split_front_matter(text);
+    if let Some(front) = front {
+        let value = |wanted: &str| {
+            front.lines().find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                (key.trim() == wanted).then(|| unquote(value.trim()).to_string())
+            })
+        };
+        return SnippetMeta {
+            description: value("description").filter(|d| !d.is_empty()),
+            version: value("version").and_then(|v| v.parse().ok()),
+        };
+    }
+    let first = text.strip_prefix('\u{feff}').unwrap_or(text).lines().next().unwrap_or("").trim();
+    let comment = first.strip_prefix(comment_marker(name)).filter(|c| !c.starts_with('!'));
+    SnippetMeta { description: comment.map(|c| c.trim().to_string()).filter(|d| !d.is_empty()), version: None }
+}
+
+fn unquote(s: &str) -> &str {
+    let quoted = |q: char| s.len() >= 2 && s.starts_with(q) && s.ends_with(q);
+    if quoted('"') || quoted('\'') { &s[1..s.len() - 1] } else { s }
+}
+
+/// A snippet's front matter, or none when the file cannot be read.
+pub fn snippet_meta(dir: &Path, name: &str) -> SnippetMeta {
+    read_snippet(dir, name).map(|text| parse_meta(name, &text)).unwrap_or_default()
+}
+
+/// Like [`read_snippet`], without the front matter: the text that is sent to the server.
+fn read_body(dir: &Path, name: &str) -> io::Result<String> {
+    read_snippet(dir, name).map(|text| without_front_matter(&text).to_string())
+}
+
 pub fn write_snippet(dir: &Path, name: &str, text: &str) -> io::Result<()> {
     if !is_valid_name(name) {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "use letters, digits, - _ . only"));
@@ -121,7 +223,7 @@ pub(super) fn wrap_snippet(kind: SnippetKind, text: &str) -> String {
 /// The bash of a prompt theme: a built-in one, or a `.prompt` snippet of your own.
 pub fn theme_text(dir: &Path, name: &str) -> Option<String> {
     if is_prompt_snippet(name) {
-        read_snippet(dir, name).ok().map(|text| prompt::script_for(&text)).filter(|t| !t.is_empty())
+        read_body(dir, name).ok().map(|text| prompt::script_for(&text)).filter(|t| !t.is_empty())
     } else {
         prompt::theme(name).map(String::from)
     }
@@ -344,7 +446,7 @@ complete -W '@LIST@' sx-theme sxt
 /// The PS1 string of a prompt theme, for the preview.
 pub fn theme_ps1(dir: &Path, name: &str) -> Option<String> {
     if is_prompt_snippet(name) {
-        read_snippet(dir, name).ok().and_then(|text| prompt::file_ps1(&text))
+        read_body(dir, name).ok().and_then(|text| prompt::file_ps1(&text))
     } else {
         prompt::theme(name).and_then(prompt::extract_ps1)
     }
@@ -414,7 +516,7 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
     let mut merged: Vec<(SnippetKind, Vec<String>, String)> = Vec::new();
     let mut plain: Vec<String> = Vec::new();
     for name in list_snippets(dir).into_iter().filter(|n| wanted(n) && !is_prompt_snippet(n)) {
-        let Ok(text) = read_snippet(dir, &name) else { continue };
+        let Ok(text) = read_body(dir, &name) else { continue };
         let kind = snippet_kind(&name);
         if matches!(kind, SnippetKind::Vim | SnippetKind::Tmux) {
             match merged.iter_mut().find(|m| m.0 == kind) {

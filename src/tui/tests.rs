@@ -2064,3 +2064,30 @@ fn the_footer_shows_tab_on_every_page_and_esc_goes_back_one_pane_in_profiles() {
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.prof_focus, ProfFocus::List);
 }
+
+#[test]
+fn the_profiles_page_shows_the_description_of_the_snippet_under_the_cursor() {
+    let (_t, mut app) = app();
+    config::write_snippet(&app.dir, "01-first", "---\ndescription: The first one\n---\nx=1\n").unwrap();
+    config::write_snippet(&app.dir, "02-second", "# A comment line\nx=2\n").unwrap();
+    config::write_snippet(&app.dir, "03-third", "x=3\n").unwrap();
+    app.reload_snippets(None);
+    app.switch_tab(Tab::Profiles);
+    app.prof_focus = ProfFocus::Snippets;
+    let at = |app: &App, n: &str| app.grid_items().iter().position(|s| s == n).unwrap();
+    let i = at(&app, "01-first");
+    app.chk_state.select(Some(i));
+    let screen = squash(&render(&mut app));
+    assert!(screen.contains("The first one") && !screen.contains("---"), "{screen}");
+    let i = at(&app, "02-second");
+    app.chk_state.select(Some(i));
+    assert!(squash(&render(&mut app)).contains("A comment line"));
+    let i = at(&app, "03-third");
+    app.chk_state.select(Some(i));
+    let screen = squash(&render(&mut app));
+    assert!(!screen.contains("A comment line") && !screen.contains("The first one"), "{screen}");
+    let i = at(&app, "01-first");
+    app.chk_state.select(Some(i));
+    app.prof_focus = ProfFocus::List;
+    assert!(!squash(&render(&mut app)).contains("The first one"), "only while the Snippets box has focus");
+}

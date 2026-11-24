@@ -257,3 +257,46 @@ fn inputrc_highlighting_covers_every_character_even_when_cut_short() {
         assert_eq!(inputrc(src).len(), src.chars().count(), "{src}");
     }
 }
+
+fn front(src: &str) -> Vec<Vec<Kind>> {
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    with_front_matter(&lines, highlight)
+}
+
+#[test]
+fn front_matter_has_its_own_colors() {
+    let k = front("---\ndescription: Short aliases\nversion: 2.10\n---\nalias ll=ls\n");
+    assert!(k[0].iter().all(|&x| x == Kind::Op) && k[3].iter().all(|&x| x == Kind::Op));
+    assert_eq!(&k[1][..11], &[Kind::Keyword; 11]);
+    assert_eq!(k[1][11], Kind::Op);
+    assert!(k[1][13..].iter().all(|&x| x == Kind::Str));
+    assert!(k[2][9..].iter().all(|&x| x == Kind::Number), "{:?}", k[2]);
+    assert_eq!(k[4][0], Kind::Builtin, "the body is highlighted as shell: {:?}", k[4]);
+}
+
+#[test]
+fn the_body_is_highlighted_on_its_own_after_the_front_matter() {
+    // an open quote in the front matter must not run into the body
+    let k = front("---\ndescription: it's\n---\necho hi # note\n");
+    assert_eq!(k[3][0], Kind::Builtin);
+    assert!(k[3][8..].iter().all(|&x| x == Kind::Comment));
+}
+
+#[test]
+fn text_that_only_looks_like_front_matter_is_not_colored_as_one() {
+    let unclosed = front("---\ndescription: x\necho hi\n");
+    assert_eq!(unclosed, highlight(&["---".into(), "description: x".into(), "echo hi".into()]));
+    let later = front("echo hi\n---\na: b\n---\n");
+    assert_eq!(later.len(), 4);
+    assert_eq!(front_matter_len(&["echo".to_string()]), 0);
+    assert_eq!(front_matter_len(&[]), 0);
+}
+
+#[test]
+fn every_character_of_front_matter_and_body_gets_a_kind() {
+    let src = "---\ndescription: \"Quoted: yes\"\n# a note\nversion: 1\nbad line\n---\nalias a='b'\n";
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    for (l, k) in lines.iter().zip(with_front_matter(&lines, highlight)) {
+        assert_eq!(l.chars().count(), k.len(), "{l}");
+    }
+}

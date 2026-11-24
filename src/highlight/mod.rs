@@ -17,6 +17,44 @@ pub enum Kind {
     Number,
 }
 
+/// How many lines at the top of `lines` are front matter, both `---` lines included, or 0 when
+/// there is none. It is the same block that `config::without_front_matter` cuts off.
+pub fn front_matter_len(lines: &[String]) -> usize {
+    if lines.first().is_none_or(|l| l.trim_end() != "---") {
+        return 0;
+    }
+    lines.iter().skip(1).position(|l| l.trim_end() == "---").map_or(0, |close| close + 2)
+}
+
+/// Classifies the front matter lines of a snippet: the `---` lines and the colons are operators,
+/// a key is a keyword, a number is a number and any other value is a string.
+fn front_matter_line(text: &str) -> Vec<Kind> {
+    let c: Vec<char> = text.chars().collect();
+    let mut out = vec![Kind::Plain; c.len()];
+    let start = c.iter().position(|ch| !ch.is_whitespace()).unwrap_or(c.len());
+    if text.trim_end() == "---" {
+        out[start..].fill(Kind::Op);
+    } else if c.get(start) == Some(&'#') {
+        out[start..].fill(Kind::Comment);
+    } else if let Some(colon) = c.iter().position(|&ch| ch == ':') {
+        out[start..colon].fill(Kind::Keyword);
+        out[colon] = Kind::Op;
+        let value = c[colon + 1..].iter().position(|ch| !ch.is_whitespace()).map_or(c.len(), |p| colon + 1 + p);
+        let number = c[value..].iter().all(|ch| ch.is_ascii_digit() || *ch == '.' || ch.is_whitespace()) && value < c.len();
+        out[value..].fill(if number { Kind::Number } else { Kind::Str });
+    }
+    out
+}
+
+/// Highlights `lines` with `body` for the text, and the front matter block at the top, if any, with
+/// its own colors. The body is classified on its own, as the server gets it.
+pub fn with_front_matter(lines: &[String], body: impl Fn(&[String]) -> Vec<Vec<Kind>>) -> Vec<Vec<Kind>> {
+    let n = front_matter_len(lines);
+    let mut out: Vec<Vec<Kind>> = lines[..n].iter().map(|l| front_matter_line(l)).collect();
+    out.extend(body(&lines[n..]));
+    out
+}
+
 /// Classifies a PS1 string, line by line. Prompt escapes (`\u`, `\h`, `\w`, `\$`) are keywords,
 /// the `\[` `\]` markers around invisible text are comments, color sequences (`\e[32m`) are
 /// numbers, and `$(...)` and `$NAME` are variables.
