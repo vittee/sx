@@ -300,3 +300,19 @@ fn every_character_of_front_matter_and_body_gets_a_kind() {
         assert_eq!(l.chars().count(), k.len(), "{l}");
     }
 }
+
+#[test]
+fn the_search_text_colors_options_numbers_and_the_user() {
+    let k = highlight_search("-p 2222 root@web1 db");
+    assert_eq!(&k[..2], &[Kind::Keyword; 2]);
+    assert_eq!(k[2], Kind::Plain);
+    assert_eq!(&k[3..7], &[Kind::Number; 4]);
+    assert_eq!(&k[8..12], &[Kind::Var; 4]);
+    assert_eq!(k[12], Kind::Op);
+    assert_eq!(&k[13..17], &[Kind::Plain; 4]);
+    assert_eq!(&k[18..], &[Kind::Plain; 2]);
+    assert!(highlight_search("").is_empty());
+    assert_eq!(highlight_search("@web"), [Kind::Plain; 4], "no user, no color");
+    assert_eq!(highlight_search("web-1"), [Kind::Plain; 5], "a dash inside a name is not an option");
+    assert_eq!(highlight_search("é@x").len(), 3);
+}

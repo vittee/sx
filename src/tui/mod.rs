@@ -89,6 +89,8 @@ enum ProfFocus {
 struct Hits {
     tabs: Vec<Rect>,
     hosts_head: Rect,
+    /// The text row of the search box.
+    search: Rect,
     hosts_list: Rect,
     snip_list: Rect,
     editor: Rect,
@@ -124,7 +126,8 @@ pub struct App {
     hosts: Vec<HostEntry>,
     tab: Tab,
     mode: Mode,
-    filter: String,
+    /// The search box: one line, edited with the same editor as the snippets.
+    filter: Editor,
     host_state: ListState,
     snippets: Vec<String>,
     snip_state: ListState,
@@ -186,7 +189,7 @@ impl App {
             hosts,
             tab: Tab::Hosts,
             mode: Mode::Normal,
-            filter: String::new(),
+            filter: Editor::from_text(""),
             host_state: ListState::default().with_selected(Some(0)),
             snippets,
             snip_state: ListState::default().with_selected(Some(0)),

@@ -96,8 +96,37 @@ pub(super) fn ago(secs: u64) -> String {
 
 /// Subsequence match: every char of `needle` appears in `hay` in order (case-insensitive).
 pub(super) fn fuzzy(needle: &str, hay: &str) -> bool {
-    let mut hay = hay.chars().flat_map(char::to_lowercase);
-    needle.chars().flat_map(char::to_lowercase).all(|n| hay.any(|h| h == n))
+    fuzzy_positions(needle, hay).is_some()
+}
+
+/// The char positions in `hay` that a subsequence match of `needle` uses, taking the first
+/// occurrence of each char in turn. `None` when `needle` does not match.
+pub(super) fn fuzzy_positions(needle: &str, hay: &str) -> Option<Vec<usize>> {
+    let same = |a: char, b: char| a == b || a.to_lowercase().eq(b.to_lowercase());
+    let mut at = hay.chars().enumerate();
+    needle.chars().map(|n| at.find(|&(_, h)| same(h, n)).map(|(i, _)| i)).collect()
+}
+
+/// `text` cut to `width` columns, as spans where the chars at `marked` (char positions in `text`) stand out.
+fn marked_spans(text: &str, width: u16, marked: &[usize], base: Style) -> Vec<Span<'static>> {
+    let shown = truncate(text, width);
+    let cut = text.chars().count() > width as usize;
+    let stand_out = base.patch(Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD).remove_modifier(Modifier::DIM));
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut run = String::new();
+    let mut run_on = false;
+    for (i, c) in shown.chars().enumerate() {
+        let on = marked.contains(&i) && !(cut && i + 1 == width as usize);
+        if on != run_on && !run.is_empty() {
+            spans.push(Span::styled(std::mem::take(&mut run), if run_on { stand_out } else { base }));
+        }
+        run_on = on;
+        run.push(c);
+    }
+    if !run.is_empty() {
+        spans.push(Span::styled(run, if run_on { stand_out } else { base }));
+    }
+    spans
 }
 
 /// The tallest the extra snippets popup gets, borders included. Longer lists scroll.
@@ -120,9 +149,9 @@ impl App {
     /// The search text as `(user, host part)`: `root@web` means "connect to the host matching `web`
     /// as `root`". Text with spaces is ssh arguments, not a host search, and has no user.
     pub(super) fn filter_parts(&self) -> (Option<&str>, &str) {
-        match self.filter.split_once('@') {
-            Some((user, rest)) if !user.is_empty() && !self.filter.contains(char::is_whitespace) => (Some(user), rest),
-            _ => (None, &self.filter),
+        match self.filter_text().split_once('@') {
+            Some((user, rest)) if !user.is_empty() && !self.filter_text().contains(char::is_whitespace) => (Some(user), rest),
+            _ => (None, self.filter_text()),
         }
     }
 
@@ -248,8 +277,8 @@ impl App {
     pub(super) fn connect_selected(&mut self) {
         let args = if let Some(i) = self.selected_host() {
             self.connect_args(i, self.cfg.hosts.get(&self.hosts[i].alias).map(|p| p.default_options()).as_ref())
-        } else if !self.filter.trim().is_empty() {
-            self.filter.split_whitespace().map(String::from).collect() // typed ssh arguments
+        } else if !self.filter_text().trim().is_empty() {
+            self.filter_text().split_whitespace().map(String::from).collect() // typed ssh arguments
         } else {
             return;
         };
@@ -312,6 +341,17 @@ impl App {
         }
     }
 
+    /// The text in the search box.
+    pub(super) fn filter_text(&self) -> &str {
+        &self.filter.lines[0]
+    }
+
+    /// Replaces the search text, with the cursor at its end.
+    pub(super) fn set_filter(&mut self, text: &str) {
+        self.filter = Editor::from_text(text);
+        self.filter.end();
+    }
+
     pub(super) fn on_key_hosts(&mut self, k: KeyEvent, ctrl: bool) {
         if self.global_nav(k) {
             return;
@@ -332,19 +372,25 @@ impl App {
             KeyCode::Char('l') if ctrl => self.open_options_picker(),
             KeyCode::Char('s') if ctrl => self.cycle_sort(),
             KeyCode::Char('r') if ctrl => self.reverse_sort(),
+            KeyCode::Left => self.filter.left(),
+            KeyCode::Right => self.filter.right(),
             KeyCode::Char(c) if !ctrl => {
-                self.filter.push(c);
+                self.filter.insert_char(c);
                 self.host_state.select(Some(0));
             }
             KeyCode::Backspace => {
-                self.filter.pop();
+                self.filter.backspace();
+                self.host_state.select(Some(0));
+            }
+            KeyCode::Delete => {
+                self.filter.delete();
                 self.host_state.select(Some(0));
             }
             KeyCode::Esc => {
-                if self.filter.is_empty() {
+                if self.filter_text().is_empty() {
                     self.quit = true;
                 } else {
-                    self.filter.clear();
+                    self.set_filter("");
                     self.host_state.select(Some(0));
                 }
             }
@@ -358,6 +404,11 @@ impl App {
             return Self::move_sel(&mut self.host_state, len, d);
         }
         let (head, list) = (self.hits.hosts_head, self.hits.hosts_list);
+        if click && inside(self.hits.search, x, y) {
+            // the text starts after the ` > ` prompt
+            self.filter.click(x.saturating_sub(self.hits.search.x + 3) as usize, 0);
+            return;
+        }
         if click && inside(head, x, y) {
             return self.click_sort(sort_key_at(x - head.x, self.hits.cols));
         }
@@ -436,16 +487,24 @@ impl App {
         if hist_h > 0 {
             self.draw_history(f, hist_a);
         }
-        let search = Paragraph::new(Line::from(vec![
-            Span::styled(" > ", Style::new().fg(Color::Cyan)),
-            Span::raw(self.filter.clone()),
-            Span::styled("▏", Style::new().fg(Color::Cyan)),
-        ]))
+        // The terminal's own cursor marks the position, as in the snippet editor, so the text is
+        // drawn as it is. A text wider than the box scrolls sideways.
+        self.filter.keep_cursor_visible(search_a.width.saturating_sub(5) as usize, 1);
+        let kinds = highlight::highlight_search(self.filter_text());
+        let width = search_a.width.saturating_sub(5) as usize;
+        let mut spans = vec![Span::styled(" > ", Style::new().fg(Color::Cyan))];
+        spans.extend(super::snippets::highlighted_line(self.filter_text(), &kinds, self.filter.left, width).spans);
+        let search = Paragraph::new(Line::from(spans))
         .block(Block::bordered().title(match self.filter_parts().0 {
             Some(user) => format!(" Search ({} hosts, connect as {user}) ", vis.len()),
             None => format!(" Search ({} hosts) ", vis.len()),
         }));
         f.render_widget(search, search_a);
+        self.hits.search = Rect { x: search_a.x + 1, y: search_a.y + 1, width: search_a.width.saturating_sub(2), height: 1 };
+        if matches!(self.mode, Mode::Normal) {
+            let col = (self.filter.col - self.filter.left) as u16;
+            f.set_cursor_position((self.hits.search.x + 3 + col, self.hits.search.y));
+        }
 
         let block = Block::bordered();
         let inner = block.inner(list_a);
@@ -457,16 +516,17 @@ impl App {
         f.render_widget(Paragraph::new(self.header_line()), head_a);
 
         if vis.is_empty() {
-            let msg = if self.filter.trim().is_empty() {
+            let msg = if self.filter_text().trim().is_empty() {
                 "No hosts found in ~/.ssh/config or known_hosts. Type a host and press Enter.".to_string()
             } else {
-                format!("No match. Press Enter to run: ssh {}", self.filter.trim())
+                format!("No match. Press Enter to run: ssh {}", self.filter_text().trim())
             };
             f.render_widget(Paragraph::new(msg).style(Style::new().fg(Color::Yellow)), rows_a);
             return;
         }
 
         let cols = self.hits.cols;
+        let needle = self.filter_parts().1.to_string();
         let items: Vec<ListItem> = vis
             .iter()
             .map(|&i| {
@@ -484,17 +544,24 @@ impl App {
                 } else {
                     Style::new().add_modifier(Modifier::DIM)
                 };
-                ListItem::new(Line::from(vec![
-                    Span::styled(truncate(if fav { "★" } else { "" }, COL_STAR), Style::new().fg(Color::Yellow)),
-                    Span::raw(truncate(&h.alias, cols.alias)),
-                    Span::styled(truncate(&self.target_of(h), cols.target), target_style),
+                // The chars the search matched, in the alias and in the target after it.
+                let target = self.target_of(h);
+                let hit = fuzzy_positions(&needle, &format!("{} {target}", h.alias)).unwrap_or_default();
+                let alias_len = h.alias.chars().count();
+                let in_alias: Vec<usize> = hit.iter().copied().filter(|&i| i < alias_len).collect();
+                let in_target: Vec<usize> = hit.iter().filter(|&&i| i > alias_len).map(|i| i - alias_len - 1).collect();
+                let mut spans = vec![Span::styled(truncate(if fav { "★" } else { "" }, COL_STAR), Style::new().fg(Color::Yellow))];
+                spans.extend(marked_spans(&h.alias, cols.alias, &in_alias, Style::new()));
+                spans.extend(marked_spans(&target, cols.target, &in_target, target_style));
+                spans.extend([
                     Span::styled(
                         truncate(profile, cols.profile),
                         Style::new().fg(if off { Color::DarkGray } else { Color::Green }),
                     ),
                     Span::styled(truncate(h.source.label(), COL_SOURCE), Style::new().add_modifier(Modifier::DIM)),
                     Span::styled(used, Style::new().add_modifier(Modifier::DIM)),
-                ]))
+                ]);
+                ListItem::new(Line::from(spans))
             })
             .collect();
         let list = List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));

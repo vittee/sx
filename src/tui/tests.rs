@@ -995,7 +995,7 @@ fn ctrl_e_picks_extra_snippets_for_one_host() {
     assert_eq!(Config::load(&app.dir).unwrap().host_snippets("alpha"), ["05-proxy"]);
     // typing does not leak into the search box, Esc closes
     key(&mut app, KeyCode::Char('x'));
-    assert!(app.filter.is_empty());
+    assert!(app.filter_text().is_empty());
     key(&mut app, KeyCode::Esc);
     assert!(matches!(app.mode, Mode::Normal));
     assert!(render(&mut app).contains("default+1"), "profile column shows the extra");
@@ -2206,4 +2206,118 @@ fn the_profiles_page_shows_the_description_of_the_snippet_under_the_cursor() {
     app.chk_state.select(Some(i));
     app.prof_focus = ProfFocus::List;
     assert!(!squash(&render(&mut app)).contains("The first one"), "only while the Snippets box has focus");
+}
+
+#[test]
+fn the_search_box_cursor_moves_and_edits_in_the_middle() {
+    let (_t, mut app) = app();
+    typed(&mut app, "alha");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    typed(&mut app, "p");
+    assert_eq!(app.filter_text(), "alpha");
+    assert!(squash(&render(&mut app)).contains("> alpha"), "no mark is drawn into the text");
+    assert_eq!(app.filter.col, 3);
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.filter_text(), "alha");
+    key(&mut app, KeyCode::Delete);
+    assert_eq!(app.filter_text(), "ala");
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Right); // stops at the end
+    typed(&mut app, "x");
+    assert_eq!(app.filter_text(), "alax");
+    key(&mut app, KeyCode::Delete); // nothing after the cursor
+    assert_eq!(app.filter_text(), "alax");
+    for _ in 0..9 {
+        key(&mut app, KeyCode::Left); // stops at the start
+    }
+    key(&mut app, KeyCode::Backspace); // nothing before the cursor
+    assert_eq!(app.filter_text(), "alax");
+    key(&mut app, KeyCode::Esc);
+    assert!(app.filter_text().is_empty());
+    typed(&mut app, "b");
+    assert_eq!(app.filter_text(), "b", "the cursor starts again at the front of an empty box");
+}
+
+#[test]
+fn the_search_box_edits_whole_characters_and_a_click_places_the_cursor() {
+    let (_t, mut app) = app();
+    typed(&mut app, "aéb");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.filter_text(), "ab");
+    typed(&mut app, "é");
+    assert_eq!(app.filter_text(), "aéb");
+    render(&mut app);
+    let s = app.hits.search;
+    click(&mut app, s.x + 3, s.y); // before the first character
+    typed(&mut app, "1");
+    assert_eq!(app.filter_text(), "1aéb");
+    click(&mut app, s.x + 60, s.y); // far right: the end
+    typed(&mut app, "2");
+    assert_eq!(app.filter_text(), "1aéb2");
+    click(&mut app, s.x + 3 + 2, s.y); // after "1a"
+    typed(&mut app, "-");
+    assert_eq!(app.filter_text(), "1a-éb2");
+}
+
+#[test]
+fn the_search_box_uses_the_terminal_cursor_and_leaves_the_text_alone() {
+    let (_t, mut app) = app();
+    typed(&mut app, "alpha");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let s = app.hits.search;
+    assert_eq!(term.get_cursor_position().unwrap(), (s.x + 3 + 3, s.y).into());
+    let row: String = (s.x..s.x + 12).map(|x| term.backend().buffer()[(x, s.y)].symbol().to_string()).collect();
+    assert_eq!(row, " > alpha    ", "no gap where the cursor is");
+}
+
+#[test]
+fn the_search_box_colors_the_user_and_ssh_options() {
+    let (_t, mut app) = app();
+    typed(&mut app, "root@web -p 22");
+    let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let s = app.hits.search;
+    let style = |col: u16| term.backend().buffer()[(s.x + 3 + col, s.y)].style().fg;
+    assert_eq!(style(0), Some(Color::Cyan), "the user");
+    assert_eq!(style(4), Some(Color::Red), "the @");
+    assert_eq!(style(9), Some(Color::Magenta), "the option");
+    assert_eq!(style(12), Some(Color::Yellow), "the number");
+}
+
+#[test]
+fn the_search_terms_are_marked_in_the_host_list() {
+    let (_t, mut app) = app();
+    typed(&mut app, "lph");
+    let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let list = app.hits.hosts_list;
+    let first = list.x + hosts::COL_STAR;
+    let cell = |col: u16| term.backend().buffer()[(first + col, list.y)].clone();
+    assert_eq!(cell(0).symbol(), "a");
+    assert_ne!(cell(0).style().fg, Some(Color::Yellow), "the first letter was not typed");
+    for col in 1..=3 {
+        assert_eq!(cell(col).style().fg, Some(Color::Yellow), "{}", cell(col).symbol());
+    }
+    assert_ne!(cell(4).style().fg, Some(Color::Yellow));
+}
+
+#[test]
+fn an_empty_search_marks_nothing_and_fuzzy_positions_are_the_first_matches() {
+    assert_eq!(hosts::fuzzy_positions("", "alpha"), Some(vec![]));
+    assert_eq!(hosts::fuzzy_positions("lph", "Alpha"), Some(vec![1, 2, 3]));
+    assert_eq!(hosts::fuzzy_positions("aa", "alpha"), Some(vec![0, 4]));
+    assert_eq!(hosts::fuzzy_positions("zz", "alpha"), None);
+    assert_eq!(hosts::fuzzy_positions("É", "café"), Some(vec![3]));
+    let (_t, mut app) = app();
+    let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let list = app.hits.hosts_list;
+    let buf = term.backend().buffer();
+    assert!((list.x..list.right()).all(|x| buf[(x, list.y)].style().fg != Some(Color::Yellow) || x < list.x + hosts::COL_STAR));
 }

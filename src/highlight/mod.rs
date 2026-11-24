@@ -17,6 +17,33 @@ pub enum Kind {
     Number,
 }
 
+/// Classifies the text of the Hosts search box, one `Kind` per `char`. A word that starts with `-`
+/// is an ssh option, a number is a port or similar, and in `user@host` the user is a variable (cyan) and the
+/// `@` an operator. Any other word is plain, since it is part of a host name.
+pub fn highlight_search(text: &str) -> Vec<Kind> {
+    let c: Vec<char> = text.chars().collect();
+    let mut out = vec![Kind::Plain; c.len()];
+    let mut i = 0;
+    while i < c.len() {
+        if c[i].is_whitespace() {
+            i += 1;
+            continue;
+        }
+        let end = c[i..].iter().position(|ch| ch.is_whitespace()).map_or(c.len(), |p| i + p);
+        let word = &c[i..end];
+        if word[0] == '-' {
+            out[i..end].fill(Kind::Keyword);
+        } else if word.iter().all(|ch| ch.is_ascii_digit()) {
+            out[i..end].fill(Kind::Number);
+        } else if let Some(at) = word.iter().position(|&ch| ch == '@').filter(|&at| at > 0) {
+            out[i..i + at].fill(Kind::Var);
+            out[i + at] = Kind::Op;
+        }
+        i = end;
+    }
+    out
+}
+
 /// How many lines at the top of `lines` are front matter, both `---` lines included, or 0 when
 /// there is none. It is the same block that `config::without_front_matter` cuts off.
 pub fn front_matter_len(lines: &[String]) -> usize {

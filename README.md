@@ -129,6 +129,8 @@ The list comes from `~/.ssh/config` and `~/.ssh/known_hosts`.
 
 The `source` column shows which one a host came from.
 
+The letters you typed are marked in the host and target columns of the list.
+
 You can also connect to a host by typing it directly in the search box.
 
 Typing `root@web` filters the list on `web` and connects to the selected host as `root`, for this
@@ -137,6 +139,7 @@ connection only.
 ![The Hosts page](demo/screens/hosts.png)
 
 #### Keys
+- `Left`, `Right`, `Delete` and a click move and edit the cursor in the search box.<br>`Up` and `Down` move in the list.
 - `Ctrl-P`, or click on the profile column.<br>The arrow keys only move in the list, so a stray key cannot change a profile.
 - `Ctrl-F`, or click on the star, marks a favorite.
 - `Ctrl-E` picks the snippets for the selected host.
