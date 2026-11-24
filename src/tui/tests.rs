@@ -988,8 +988,8 @@ fn ctrl_e_picks_extra_snippets_for_one_host() {
     ctrl(&mut app, 'e');
     assert!(matches!(app.mode, Mode::HostSnippets(ref h) if h == "alpha"));
     let screen = render(&mut app);
-    assert!(screen.contains("alpha + profile default"), "{screen}");
-    assert!(screen.contains("05-proxy") && screen.contains("20-aliases (in profile)") || screen.contains("(in profile)"), "{screen}");
+    assert!(screen.contains("Snippets for this host") && !screen.contains("alpha +"), "{screen}");
+    assert!(screen.contains("[x] 20-aliases") && screen.contains("[ ] 05-proxy"), "{screen}");
     key(&mut app, KeyCode::Char(' ')); // first row: 05-proxy
     assert_eq!(app.cfg.host_snippets("alpha"), ["05-proxy"]);
     assert_eq!(Config::load(&app.dir).unwrap().host_snippets("alpha"), ["05-proxy"]);
@@ -2112,6 +2112,73 @@ fn double_clicking_a_built_in_prompt_stays_on_the_profiles_page() {
     click(&mut app, l.x + 8, l.y + 1);
     click(&mut app, l.x + 8, l.y + 1);
     assert_eq!(app.tab, Tab::Profiles);
+}
+
+#[test]
+fn the_host_popup_turns_a_snippet_of_the_profile_off_for_that_host() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'e');
+    let rows = app.grid_items();
+    let at = rows.iter().position(|n| n == "20-aliases").unwrap();
+    for _ in 0..at {
+        key(&mut app, KeyCode::Down);
+    }
+    assert!(squash(&render(&mut app)).contains("[x] 20-aliases"));
+    key(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.cfg.host_without("alpha"), ["20-aliases"]);
+    assert!(app.cfg.host_snippets("alpha").is_empty(), "it is not an extra");
+    assert!(squash(&render(&mut app)).contains("[ ] 20-aliases"));
+    assert_eq!(Config::load(&app.dir).unwrap().host_without("alpha"), ["20-aliases"]);
+    key(&mut app, KeyCode::Esc);
+    assert!(render(&mut app).contains("default-1"), "the profile column shows it");
+    assert!(app.cfg.host_without("beta").is_empty());
+    ctrl(&mut app, 'e');
+    for _ in 0..at {
+        key(&mut app, KeyCode::Down);
+    }
+    key(&mut app, KeyCode::Char(' '));
+    assert!(app.cfg.host_without("alpha").is_empty(), "a second press turns it back on");
+}
+
+#[test]
+fn a_long_snippet_list_scrolls_inside_a_popup_of_limited_height() {
+    let (_t, mut app) = app();
+    for i in 0..40 {
+        config::write_snippet(&app.dir, &format!("zz-{i:02}"), "x").unwrap();
+    }
+    app.reload_snippets(None);
+    ctrl(&mut app, 'e');
+    render(&mut app);
+    let list = app.hits.popup_list;
+    assert!(list.height <= 14, "{list:?}");
+    for _ in 0..30 {
+        key(&mut app, KeyCode::Down);
+    }
+    let screen = render(&mut app);
+    assert!(app.host_chk.offset() > 0, "the list scrolled");
+    assert!(screen.contains("Snippets for this host"));
+}
+
+#[test]
+fn the_extras_popup_moves_when_its_title_bar_is_dragged() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'e');
+    render(&mut app);
+    let before = app.hits.extras_area;
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), before.x + 4, before.y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), before.x + 9, before.y + 3);
+    mouse(&mut app, MouseEventKind::Up(MouseButton::Left), before.x + 9, before.y + 3);
+    render(&mut app);
+    let after = app.hits.extras_area;
+    assert_eq!((after.x, after.y), (before.x + 5, before.y + 3));
+    assert!(matches!(app.mode, Mode::HostSnippets(_)), "a drag on the title does not close it");
+    let list = app.hits.popup_list;
+    click(&mut app, list.x + 2, list.y);
+    assert!(!app.cfg.host_snippets("alpha").is_empty() || !app.cfg.host_without("alpha").is_empty(), "rows still click after the move");
+    key(&mut app, KeyCode::Esc);
+    ctrl(&mut app, 'e');
+    render(&mut app);
+    assert_eq!(app.hits.extras_area, before, "centred again on reopening");
 }
 
 #[test]

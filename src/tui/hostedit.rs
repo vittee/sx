@@ -504,7 +504,7 @@ impl App {
     }
 
     /// The popup rectangle: centred, then moved by the drag offset and kept inside the body.
-    fn dragged_popup_area(&mut self, body: Rect, w: u16, h: u16) -> Rect {
+    pub(super) fn dragged_popup_area(&mut self, body: Rect, w: u16, h: u16) -> Rect {
         let mut area = Self::popup_area(body, w, h);
         let dx = self.popup_offset.0.clamp(body.x as i32 - area.x as i32, body.right() as i32 - area.right() as i32);
         let dy = self.popup_offset.1.clamp(body.y as i32 - area.y as i32, body.bottom() as i32 - area.bottom() as i32);
@@ -795,11 +795,12 @@ impl App {
 }
 
 impl App {
-    /// Dragging the title bar of the options popup or the picker moves it. True when the event was part of that.
+    /// Dragging the title bar of the options popup, the picker or the extras popup moves it. True when the event was part of that.
     pub(super) fn drag_options_popup(&mut self, m: &MouseEvent) -> bool {
         let area = match self.mode {
             Mode::HostForm(_) => self.hits.form_area,
             Mode::OptionsPicker(_) => self.hits.picker_area,
+            Mode::HostSnippets(_) => self.hits.extras_area,
             _ => {
                 self.popup_drag = None;
                 return false;

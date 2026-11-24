@@ -100,6 +100,9 @@ pub(super) fn fuzzy(needle: &str, hay: &str) -> bool {
     needle.chars().flat_map(char::to_lowercase).all(|n| hay.any(|h| h == n))
 }
 
+/// The tallest the extra snippets popup gets, borders included. Longer lists scroll.
+const MAX_POPUP_HEIGHT: u16 = 16;
+
 impl App {
     /// Indices into `self.hosts` that match the filter, in the configured sort order.
     pub(super) fn visible(&self) -> Vec<usize> {
@@ -265,6 +268,7 @@ impl App {
     pub(super) fn open_host_snippets(&mut self) {
         if let Some(i) = self.selected_host() {
             self.host_chk.select(Some(0));
+            self.popup_offset = (0, 0);
             self.mode = Mode::HostSnippets(self.hosts[i].alias.clone());
         }
     }
@@ -281,10 +285,21 @@ impl App {
         self.mode = Mode::HostSnippets(host);
     }
 
+    /// The snippets of the profile a host uses.
+    fn host_profile_snippets(&self, host: &str) -> Vec<String> {
+        let profile = self.cfg.profile_for(host);
+        profile.and_then(|p| self.cfg.profiles.get(p)).map(|p| p.snippets.clone()).unwrap_or_default()
+    }
+
     pub(super) fn toggle_host_extra(&mut self, host: &str) {
         let items = self.grid_items();
         if let Some(name) = self.host_chk.selected().and_then(|i| items.get(i)) {
-            self.cfg.toggle_host_snippet(host, name);
+            // A snippet of the profile is turned off for this host, anything else is an extra.
+            if self.host_profile_snippets(host).contains(name) {
+                self.cfg.toggle_host_without(host, name);
+            } else {
+                self.cfg.toggle_host_snippet(host, name);
+            }
             self.save_cfg();
         }
     }
@@ -368,15 +383,15 @@ impl App {
     /// Popup over the host list: the snippets this host gets in addition to its profile's.
     pub(super) fn draw_host_snippets(&mut self, f: &mut Frame, body: Rect, host: &str) {
         let items = self.grid_items();
-        let profile = self.cfg.profile_for(host).map(String::from);
-        let from_profile: Vec<String> =
-            profile.as_ref().and_then(|p| self.cfg.profiles.get(p)).map(|p| p.snippets.clone()).unwrap_or_default();
+        let from_profile = self.host_profile_snippets(host);
         let w = body.width.min(56);
-        let h = (items.len() as u16 + 2).clamp(5, body.height.max(5)).min(body.height);
-        let area = Rect::new(body.x + (body.width - w) / 2, body.y + (body.height - h) / 2, w, h);
+        // A long list scrolls inside the popup instead of making it taller.
+        let h = (items.len() as u16 + 2).clamp(5, MAX_POPUP_HEIGHT).min(body.height);
+        let area = self.dragged_popup_area(body, w, h);
+        self.hits.extras_area = area;
         f.render_widget(ratatui::widgets::Clear, area);
         let block = Block::bordered()
-            .title(format!(" {host} + profile {} ", profile.as_deref().unwrap_or("off")))
+            .title(" Snippets for this host ")
             .border_style(Style::new().fg(Color::Cyan));
         let inner = block.inner(area);
         f.render_widget(block, area);
@@ -386,18 +401,17 @@ impl App {
             return;
         }
         let extras = self.cfg.host_snippets(host).to_vec();
+        let without = self.cfg.host_without(host).to_vec();
         let rows: Vec<ListItem> = items
             .iter()
             .map(|name| {
-                let on = extras.contains(name);
                 let via_profile = from_profile.contains(name);
-                let mut spans = vec![
+                let skipped = via_profile && without.contains(name);
+                let on = (via_profile && !skipped) || extras.contains(name);
+                let spans = vec![
                     Span::styled(if on { "[x] " } else { "[ ] " }, Style::new().fg(if on { Color::Green } else { Color::DarkGray })),
                     Span::styled(name.clone(), Style::new().fg(kind_color(name))),
                 ];
-                if via_profile {
-                    spans.push(Span::styled("  (in profile)", Style::new().add_modifier(Modifier::DIM)));
-                }
                 ListItem::new(Line::from(spans))
             })
             .collect();
@@ -462,7 +476,7 @@ impl App {
                 let base = self.cfg.profile_for(&h.alias).unwrap_or("off");
                 let off = base == "off";
                 let extras = self.cfg.host_snippets(&h.alias).len();
-                let profile = &Self::profile_text(base, extras);
+                let profile = &Self::profile_text(base, extras, self.cfg.host_without(&h.alias).len());
                 let used = prefs.and_then(|p| p.last_used).map(ago).unwrap_or_default();
                 // Cyan marks a host whose connection options are set (Ctrl-O).
                 let target_style = if prefs.is_some_and(|p| p.has_overrides()) {
@@ -518,8 +532,17 @@ impl App {
     }
 
     /// `base`, or `base+N` when the host has N extra snippets.
-    fn profile_text(base: &str, extras: usize) -> String {
-        if extras > 0 && base != "off" { format!("{base}+{extras}") } else { base.to_string() }
+    fn profile_text(base: &str, extras: usize, without: usize) -> String {
+        let mut text = base.to_string();
+        if base != "off" {
+            if extras > 0 {
+                text.push_str(&format!("+{extras}"));
+            }
+            if without > 0 {
+                text.push_str(&format!("-{without}"));
+            }
+        }
+        text
     }
 
     /// The widths of the host, target and profile columns for a list `width` wide. They follow the
@@ -529,7 +552,7 @@ impl App {
         let mut want = [0u16; 3];
         for h in &self.hosts {
             let base = self.cfg.profile_for(&h.alias).unwrap_or("off");
-            let profile = Self::profile_text(base, self.cfg.host_snippets(&h.alias).len());
+            let profile = Self::profile_text(base, self.cfg.host_snippets(&h.alias).len(), self.cfg.host_without(&h.alias).len());
             want[0] = want[0].max(chars(&h.alias));
             want[1] = want[1].max(chars(&self.target_of(h)));
             want[2] = want[2].max(chars(&profile));

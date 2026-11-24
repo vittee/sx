@@ -66,6 +66,9 @@ pub struct HostPrefs {
     /// Snippets sent to this host on top of its profile's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub snippets: Vec<String>,
+    /// Snippets of its profile that this host does not get.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub without: Vec<String>,
     /// The default connection options, which replace the ones from `~/.ssh/config`: ssh `-l`,
     /// `-p`, `-i`, `-J`, and free-form extra arguments. Empty means no override.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -399,6 +402,7 @@ impl Config {
         }
         for h in self.hosts.values_mut() {
             h.snippets.retain(|s| s != snippet);
+            h.without.retain(|s| s != snippet);
         }
     }
 
@@ -410,6 +414,21 @@ impl Config {
         } else {
             h.snippets.push(snippet.to_string());
         }
+    }
+
+    /// Turns a snippet of the host's profile off for this host, or back on.
+    pub fn toggle_host_without(&mut self, host: &str, snippet: &str) {
+        let h = self.hosts.entry(host.to_string()).or_default();
+        if let Some(i) = h.without.iter().position(|s| s == snippet) {
+            h.without.remove(i);
+        } else {
+            h.without.push(snippet.to_string());
+        }
+    }
+
+    /// The snippets of a host's profile that the host does not get.
+    pub fn host_without(&self, host: &str) -> &[String] {
+        self.hosts.get(host).map_or(&[], |h| h.without.as_slice())
     }
 
     /// A host's extra snippets.

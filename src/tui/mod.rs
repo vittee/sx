@@ -114,6 +114,7 @@ struct Hits {
     form_keylist: Vec<(Rect, String)>,
     /// The options picker: its frame and its rows.
     picker_area: Rect,
+    extras_area: Rect,
     picker_list: Rect,
 }
 

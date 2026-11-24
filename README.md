@@ -139,8 +139,9 @@ connection only.
 #### Keys
 - `Ctrl-P`, or click on the profile column.<br>The arrow keys only move in the list, so a stray key cannot change a profile.
 - `Ctrl-F`, or click on the star, marks a favorite.
-- `Ctrl-E` picks extra snippets for the selected host on top of its profile's.
-  The profile column then reads `default+2`.
+- `Ctrl-E` picks the snippets for the selected host.
+  A snippet outside its profile is added as an extra, and one of the profile can be turned off for this host.
+  The profile column then reads `default+2-1`, for 2 extras and 1 left out.
 - `Ctrl-O` edits the connection options of the selected host.
   A host can keep several named options, such as `root` or `deploy via bastion`, and the form lists its keys.
   `Ctrl-K` picks the identity file from the keys in `~/.ssh` and the jump host from the other hosts.
@@ -189,7 +190,7 @@ Each profile has its own prompt and snippets.
   each host's profile, extra snippets and connection options, favorites and last-used times.  
 - `history.tsv` has one line per session (time, host, seconds, outcome), trimmed to the newest 1000.
 - `snippets/<name>.sh` holds the rc pieces.<br>
-  A host gets its profile's snippets plus its own extras, joined in name order,
+  A host gets its profile's snippets, minus the ones it leaves out, plus its own extras, joined in name order,
   so names like `10-prompt` and `20-aliases` control the order.<br>
   A snippet in both places is sent once.
 

@@ -498,12 +498,12 @@ fn info_block(profile: &str, prompt: Option<&str>, plain: &[String], vim: &[Stri
 /// Builds the rc text sent to the server: the profile's snippets (sorted by name), then its prompt
 /// theme. The theme comes last so an explicit choice wins over any `PS1` set in a snippet.
 pub fn build_rc(dir: &Path, cfg: &Config, profile: &str) -> String {
-    build_rc_with(dir, cfg, profile, &[])
+    build_rc_with(dir, cfg, profile, &[], &[])
 }
 
 /// Like [`build_rc`], plus the extra snippets set for one host.
 pub fn build_rc_for_host(dir: &Path, cfg: &Config, profile: &str, host: &str) -> String {
-    build_rc_with(dir, cfg, profile, cfg.host_snippets(host))
+    build_rc_with(dir, cfg, profile, cfg.host_snippets(host), cfg.host_without(host))
 }
 
 fn push_block(out: &mut String, title: &str, body: &str) {
@@ -513,10 +513,10 @@ fn push_block(out: &mut String, title: &str, body: &str) {
     }
 }
 
-fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> String {
+fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String], without: &[String]) -> String {
     let Some(p) = cfg.profiles.get(profile) else { return String::new() };
     let mut out = String::new();
-    let wanted = |n: &String| p.snippets.contains(n) || extra.contains(n);
+    let wanted = |n: &String| (p.snippets.contains(n) && !without.contains(n)) || extra.contains(n);
     // Every vim snippet is joined into one config, and every tmux snippet into one, because the
     // server runs the program with a single file. They go after the shell snippets.
     let mut merged: Vec<(SnippetKind, Vec<String>, String)> = Vec::new();

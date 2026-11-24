@@ -831,6 +831,22 @@ fn sx_tmux_puts_its_default_command_before_your_config_so_yours_wins() {
 }
 
 #[test]
+fn a_host_can_leave_out_a_snippet_of_its_profile() {
+    let (tmp, mut cfg) = setup();
+    cfg.toggle_host_without("h", "20-aliases");
+    assert_eq!(cfg.host_without("h"), ["20-aliases"]);
+    assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "h").contains("# --- 20-aliases ---"));
+    assert!(build_rc_for_host(tmp.path(), &cfg, "default", "other").contains("# --- 20-aliases ---"));
+    cfg.save(tmp.path()).unwrap();
+    assert_eq!(Config::load(tmp.path()).unwrap().host_without("h"), ["20-aliases"]);
+    cfg.forget_snippet("20-aliases");
+    assert!(cfg.host_without("h").is_empty());
+    cfg.toggle_host_without("h", "x");
+    cfg.toggle_host_without("h", "x");
+    assert!(cfg.host_without("h").is_empty());
+}
+
+#[test]
 fn front_matter_gives_the_description_and_is_never_sent() {
     let (tmp, cfg) = setup();
     let text = "---\ndescription: \"Short aliases\"\nauthor: me\n---\nalias ll='ls -l'\n";
