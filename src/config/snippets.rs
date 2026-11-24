@@ -610,6 +610,9 @@ fn build_rc_with(
     if !terminal.is_empty() {
         push_block(&mut out, "title", &format!("{}{terminal}", super::env_shell_vars(env, truecolor)));
     }
+    if let Some(guard) = env.map(|(_, e)| e.shell_guard()).filter(|g| !g.is_empty()) {
+        push_block(&mut out, "guard", &guard);
+    }
     if out.contains("# --- sx-theme ---") {
         push_block(&mut out, "theme from sx-sudo", RESTORE_THEME);
     }

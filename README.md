@@ -369,7 +369,7 @@ You make your own environments, `sx` has none until you do.<br>
 Open the Envs page and press `Ctrl-N`.<br>
 The names `prod`, `staging`, `uat`, `sit` and `dev` start from a template with a color and patterns, any other name starts blank.<br>
 `Ctrl-Y` copies the selected environment, `Ctrl-R` renames it (hosts keep their tag) and `Ctrl-D` deletes it (hosts lose their tag).<br>
-`Enter` opens the form on the right: label, color, host patterns, the three features, with a preview of the badge.<br>
+`Enter` opens the form on the right: label, color, host patterns, the four features and the guarded commands, with a preview of the badge.<br>
 The tab also lists the hosts tagged with it, and the matching hosts: those not tagged yet whose name fits a host pattern.
 
 Each one is a table in `config.toml`, which you can edit by hand:
@@ -379,7 +379,8 @@ Each one is a table in `config.toml`, which you can edit by hand:
 label = "PROD"                          # text of the badge and the title, up to 16 characters, the name in capitals when left out
 color = "red"                           # a name, a number from 0 to 255, or #rrggbb
 patterns = ["*prod*", "*prd*"]          # * is any text, ? is one character, case is ignored
-features = ["badge", "title", "confirm"]  # what it does
+features = ["badge", "title", "confirm", "guard"]  # what it does
+guard = ["rm -r*", "shutdown*"]         # commands to ask about, when the guard feature is on
 
 [hosts.web-prod-1]
 env = "prod"
@@ -387,15 +388,22 @@ env = "prod"
 
 In the form, `Tab`, `Up` and `Down` move between the rows and `Space` switches a feature.<br>
 In a text row `Left`, `Right`, `Home` and `End` move the cursor, `Delete` and `Backspace` remove a character, and a click puts the cursor where you click.<br>
-The host patterns are separated by commas or spaces.
+The host patterns are separated by commas or spaces, the guarded commands by commas.
 
 The colors are `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan` and `white`.<br>
 The text is black or white, whichever reads better on the color.<br>
-`features` can hold `badge`, `title` and `confirm`. Leave one out to turn it off for that environment.<br>
+`features` can hold `badge`, `title`, `confirm` and `guard`. Leave one out to turn it off for that environment.<br>
 `confirm` is off in a new environment, and on in the `prod` template.<br>
 With `confirm`, `sx` asks `Connect to web-prod-1 (PROD)? (y/N)` before it connects to a host of the environment,
 from the host list and from `sx web-prod-1` in the shell.<br>
 Only `y` goes on. In a shell with no terminal to ask on, such as a script, it does not ask.<br>
+`guard` asks before a command runs on the server.<br>
+You set the commands in the `guarded commands` row of the Envs form, under the `guard` switch, separated by commas, with `*` for any text and `?` for one character.<br>
+The `prod` template guards `rm -r*`, `rm -fr*`, `shutdown*`, `reboot*`, `halt*`, `poweroff*`, `mkfs*` and `dd *of=/dev/*`.<br>
+Each command you type in that shell is matched as written, after aliases, and `a && b` counts as two.
+A match shows `sx guard: rm -rf x` and `run it? (y/N)`, and only `y` runs it.<br>
+It is a safety net against slips, not a lock: `\rm`, a script, a function body or `"rm" -rf` get past it, and it needs bash 4.1 or newer on the server.
+It uses a `DEBUG` trap, so it replaces one the server's own rc may have set.
 An environment you delete, or a tag that names one that does not exist, does nothing.
 
 ## Terminal integration

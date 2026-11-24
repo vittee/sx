@@ -12,6 +12,8 @@ pub const FEATURE_BADGE: &str = "badge";
 pub const FEATURE_TITLE: &str = "title";
 /// Asks before `sx` connects to a host of the environment. It is not on in a new environment.
 pub const FEATURE_CONFIRM: &str = "confirm";
+/// Asks before a command that matches one of the environment's `guard` patterns runs in the shell.
+pub const FEATURE_GUARD: &str = "guard";
 const DEFAULT_FEATURES: [&str; 2] = [FEATURE_BADGE, FEATURE_TITLE];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -29,7 +31,15 @@ pub struct Env {
     /// What the environment does: `badge` and `title` on the server, `confirm` before connecting.
     #[serde(default = "default_features")]
     pub features: Vec<String>,
+    /// Command patterns the `guard` feature asks about: `*` is any text and `?` is one character,
+    /// matched against the whole command, such as `rm -r*`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub guard: Vec<String>,
 }
+
+/// The commands the `prod` template guards.
+const PROD_GUARD: [&str; 8] =
+    ["rm -r*", "rm -fr*", "shutdown*", "reboot*", "halt*", "poweroff*", "mkfs*", "dd *of=/dev/*"];
 
 fn default_color() -> String {
     "white".to_string()
@@ -50,7 +60,26 @@ impl Env {
             color: color.to_string(),
             patterns: patterns.iter().map(|s| s.to_string()).collect(),
             features: default_features(),
+            guard: Vec::new(),
         }
+    }
+
+    /// Whether the guard does anything: the feature is on and there is a pattern.
+    pub fn guard_active(&self) -> bool {
+        self.has(FEATURE_GUARD) && self.guard.iter().any(|g| !g.trim().is_empty())
+    }
+
+    /// Bash that asks before a guarded command runs, or nothing when the guard is not active. It is a
+    /// `DEBUG` trap with `extdebug`, so a nonzero status from the trap skips the command. It sees
+    /// the commands typed at the prompt, one by one (`a && b` is two), after aliases are expanded.
+    /// It is a safety net against slips: `\rm`, a script or a function body gets past it.
+    pub fn shell_guard(&self) -> String {
+        if !self.guard_active() {
+            return String::new();
+        }
+        let patterns: Vec<String> =
+            self.guard.iter().map(|g| g.trim()).filter(|g| !g.is_empty()).map(|g| format!("'{}'", g.replace('\'', r"'\''"))).collect();
+        format!("__sx_guard_patterns=({})\n{GUARD_FUNCTION}", patterns.join(" "))
     }
 
     pub fn has(&self, feature: &str) -> bool {
@@ -87,6 +116,27 @@ impl Env {
     }
 }
 
+/// The bash behind [`Env::shell_guard`]. Our own hooks (`__sx_*`) are never asked about. Without a
+/// terminal to ask on, the answer is no. `__sx_guard_tty` names another terminal, for the tests.
+const GUARD_FUNCTION: &str = r#"__sx_guard() {
+  local c=$BASH_COMMAND p a t=${__sx_guard_tty:-/dev/tty}
+  case $c in __sx_*|'') return 0;; esac
+  for p in "${__sx_guard_patterns[@]}"; do
+    case $c in
+      $p)
+        printf '\nsx guard: %s\nrun it? (y/N) ' "$c" >"$t" 2>/dev/null || return 1
+        read -r a <"$t" 2>/dev/null
+        case $a in [yY]|[yY][eE][sS]) return 0;; esac
+        printf 'sx: skipped\n' >"$t" 2>/dev/null
+        return 1;;
+    esac
+  done
+  return 0
+}
+shopt -s extdebug 2>/dev/null
+trap __sx_guard DEBUG
+"#;
+
 /// [`Env::shell_vars`] for a host's environment, or empty values for a host that has none.
 pub fn env_shell_vars(env: Option<(&str, &Env)>, truecolor: bool) -> String {
     env.map_or_else(|| "__sx_env_badge=''\n__sx_env_label=''\n".to_string(), |(name, e)| e.shell_vars(name, truecolor))
@@ -120,7 +170,8 @@ pub fn env_templates() -> Vec<(&'static str, Env)> {
         (
             "prod",
             Env {
-                features: vec![FEATURE_BADGE.into(), FEATURE_TITLE.into(), FEATURE_CONFIRM.into()],
+                features: vec![FEATURE_BADGE.into(), FEATURE_TITLE.into(), FEATURE_CONFIRM.into(), FEATURE_GUARD.into()],
+                guard: PROD_GUARD.iter().map(|s| s.to_string()).collect(),
                 ..Env::new("red", &["*prod*", "*prd*"])
             },
         ),

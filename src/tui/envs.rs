@@ -10,15 +10,17 @@ pub(super) enum EnvFocus {
     Fields,
 }
 
-/// The rows of the form. Rows 3 to 5 switch a feature, the others are text.
-const FIELDS: [&str; 6] = ["label", "color", "host patterns", "badge", "title", "confirm"];
+/// The rows of the form. Rows 3 to 6 switch a feature, the others are text. The guarded commands
+/// come last so they sit under the `guard` switch they belong to.
+const FIELDS: [&str; 8] =
+    ["label", "color", "host patterns", "badge", "title", "confirm", "guard", "guarded commands"];
 
 /// Width of the name column of a form row, with its leading space. The checkbox follows it.
 const NAME_WIDTH: u16 = 18;
 
 /// Whether a row of the form is typed into, not switched.
 fn is_text(field: usize) -> bool {
-    matches!(field, 0..=2)
+    matches!(field, 0..=2 | 7)
 }
 
 /// The feature a switch row of the form controls.
@@ -26,7 +28,8 @@ fn field_feature(field: usize) -> &'static str {
     match field {
         3 => config::FEATURE_BADGE,
         4 => config::FEATURE_TITLE,
-        _ => config::FEATURE_CONFIRM,
+        5 => config::FEATURE_CONFIRM,
+        _ => config::FEATURE_GUARD,
     }
 }
 
@@ -71,6 +74,7 @@ impl App {
                     0 => e.label.clone(),
                     1 => e.color.clone(),
                     2 => e.patterns.join(", "),
+                    7 => e.guard.join(", "),
                     _ => String::new(),
                 })
             })
@@ -97,6 +101,7 @@ impl App {
                 env.patterns =
                     buf.split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()).map(String::from).collect();
             }
+            7 => env.guard = buf.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect(),
             _ => return,
         }
         self.save_cfg();
@@ -331,7 +336,7 @@ impl App {
                 if at { Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { dim },
             );
             let value = match i {
-                0..=2 => {
+                0..=2 | 7 => {
                     let text = if at {
                         // the terminal's own cursor marks the position, a long text scrolls sideways
                         self.env_buf.keep_cursor_visible(room, 1);
@@ -341,12 +346,15 @@ impl App {
                         match i {
                             0 => env.label.clone(),
                             1 => env.color.clone(),
-                            _ => env.patterns.join(", "),
+                            2 => env.patterns.join(", "),
+                            _ => env.guard.join(", "),
                         }
                     };
                     let mut spans = vec![Span::raw(text)];
                     if !at && i == 0 && env.label.is_empty() {
                         spans.push(Span::styled("(the name in capitals)", dim));
+                    } else if !at && i == 7 && env.guard.is_empty() {
+                        spans.push(Span::styled("(commands to ask about, separated by commas, * is any text)", dim));
                     } else if !at && i == 2 && env.patterns.is_empty() {
                         spans.push(Span::styled("(host names to suggest this environment for, * is any text)", dim));
                     }
@@ -362,7 +370,8 @@ impl App {
                     let what = match i {
                         3 => "the label in the prompt, before the $ or #",
                         4 => "the label in the window title",
-                        _ => "ask before connecting to a host of this environment",
+                        5 => "ask before connecting to a host of this environment",
+                        _ => "ask before running a command that matches the guarded commands below",
                     };
                     vec![Span::styled(if on { "[x]" } else { "[ ]" }, mark), Span::styled(format!(" {what}"), dim)]
                 }

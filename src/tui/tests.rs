@@ -2164,6 +2164,13 @@ fn an_environment_is_edited_in_the_form_and_saved_as_you_type() {
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Char(' '));
     assert!(app.cfg.envs["qa"].has(config::FEATURE_CONFIRM));
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Char(' '));
+    assert!(!app.cfg.envs["qa"].guard_active(), "no guarded commands yet");
+    key(&mut app, KeyCode::Down);
+    typed(&mut app, "rm -r*, shutdown*");
+    assert_eq!(app.cfg.envs["qa"].guard, ["rm -r*", "shutdown*"], "commands are split at commas only");
+    assert!(app.cfg.envs["qa"].guard_active());
 
     app.cfg.envs.get_mut("qa").unwrap().color = "pink".into();
     assert!(render(&mut app).contains("not a color"));

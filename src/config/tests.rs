@@ -1001,3 +1001,17 @@ fn the_badge_goes_right_before_the_prompt_symbol() {
     assert_eq!(run(r"\u@\h> "), r"[B]\u@\h> ");
 }
 
+#[test]
+fn the_guard_is_sent_only_to_a_host_whose_environment_has_one() {
+    let (tmp, mut cfg) = setup();
+    cfg.add_env("live", Env { features: vec![FEATURE_GUARD.to_string()], guard: vec!["rm -r*".to_string()], ..Env::new("red", &[]) }).unwrap();
+    cfg.add_env("plain", Env::new("blue", &[])).unwrap();
+    cfg.set_env("web-1", Some("live"));
+    cfg.set_env("web-2", Some("plain"));
+    let guarded = build_rc_for_host(tmp.path(), &cfg, "default", "web-1", false);
+    assert!(guarded.contains("# --- guard ---\n__sx_guard_patterns=('rm -r*')\n__sx_guard() {"), "{guarded}");
+    assert!(guarded.contains("trap __sx_guard DEBUG"), "{guarded}");
+    assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "web-2", false).contains("trap __sx_guard"));
+    assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "other", false).contains("trap __sx_guard"));
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("trap __sx_guard"));
+}

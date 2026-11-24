@@ -168,6 +168,60 @@ fn confirm_is_a_feature_that_is_off_unless_asked_for() {
     assert!(!Env::new("red", &[]).has(FEATURE_CONFIRM));
 }
 
+fn guarded(features: &[&str], guard: &[&str]) -> Env {
+    Env {
+        features: features.iter().map(|s| s.to_string()).collect(),
+        guard: guard.iter().map(|s| s.to_string()).collect(),
+        ..Env::new("red", &[])
+    }
+}
+
+#[test]
+fn the_guard_needs_the_feature_and_a_pattern() {
+    assert!(guarded(&[FEATURE_GUARD], &["rm -r*"]).guard_active());
+    assert!(!guarded(&[], &["rm -r*"]).guard_active(), "the feature is off");
+    assert!(!guarded(&[FEATURE_GUARD], &[]).guard_active(), "no pattern");
+    assert!(!guarded(&[FEATURE_GUARD], &["  "]).guard_active(), "a blank pattern is no pattern");
+    assert_eq!(guarded(&[], &["rm -r*"]).shell_guard(), "");
+    let prod = env_templates().into_iter().find(|(n, _)| *n == "prod").unwrap().1;
+    assert!(prod.guard_active() && prod.shell_guard().contains("'rm -r*'"));
+    assert!(!Env::new("red", &[]).guard_active(), "a new environment guards nothing");
+}
+
+#[test]
+fn guard_patterns_are_quoted_for_bash_and_saved_only_when_there_are_some() {
+    let text = guarded(&[FEATURE_GUARD], &["echo 'a b'", " ls "]).shell_guard();
+    assert!(text.starts_with(r"__sx_guard_patterns=('echo '\''a b'\''' 'ls')"), "{text}");
+    let mut cfg = Config::default();
+    cfg.add_env("plain", Env::new("red", &[])).unwrap();
+    cfg.add_env("strict", guarded(&[FEATURE_GUARD], &["rm -r*"])).unwrap();
+    let toml = toml::to_string(&cfg).unwrap();
+    assert_eq!(toml.matches("guard = [").count(), 1, "{toml}");
+}
+
+#[test]
+fn a_guarded_command_is_skipped_in_real_bash_and_the_others_run() {
+    use std::io::Write;
+    if !crate::tests::testutil::bash_at_least(4, 1) {
+        return;
+    }
+    let _bash = crate::tests::testutil::bash_lock();
+    let guard = guarded(&[FEATURE_GUARD], &["echo blocked*", "printf *x*"]).shell_guard();
+    let script = format!("__sx_guard_tty=/dev/null\n{guard}\necho first\necho blocked one\nprintf 'a x\n'\necho blocked && echo last\n");
+    let mut child = crate::tests::testutil::bash()
+        .arg("--norc")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).replace('\r', "");
+    // there is no terminal to ask on in a test, so the answer is no
+    assert_eq!(text, "first\nlast\n", "{text} / {}", String::from_utf8_lossy(&out.stderr));
+}
+
 #[test]
 fn a_hex_color_is_exact_on_a_truecolor_terminal_and_nearest_of_256_otherwise() {
     assert_eq!(badge_sgr("#ff8800", true).as_deref(), Some("1;30;48;2;255;136;0"));
