@@ -259,6 +259,54 @@ const SUDO: &str = "sx-sudo() { case ${1-} in -h|--help) printf '%s\\n' 'usage: 
 printf '%s\\n%s\\n' \"$__sx_payload\" \"${__sx_theme_cur-}\" | sudo -H -u \"$u\" bash -c 'read -r P; read -r T; export SX_RC=$P SX_THEME=$T; cd ~ 2>/dev/null; \
 exec bash --rcfile <(printf %s \"$P\" | base64 -d | gunzip) -i <&1'; }\n";
 
+/// `sx-zsh` starts zsh with your prompt, with nothing written on the server. zsh has no flag for an
+/// rc file, it reads startup files only, so the prompt goes in the environment instead: the bash
+/// `PS1` is translated by `__sx_zsh_ps1` and passed as `PS1`, which zsh takes from its environment.
+/// `-f` skips every startup file, so nothing sets the prompt again, and `-o promptsubst` lets `$(...)`
+/// in it run, as bash does. Aliases, functions and the server's own zsh setup are not there. What the
+/// translation does not know is kept as plain text, and a `%` inside a `$(...)` is doubled by mistake.
+/// The window title that `sx` puts in `PS1` is a `$(...)` that holds the text of `__sx_tc`, a bash
+/// command that zsh would run wrongly, so it becomes the same title written as a zsh prompt escape.
+const ZSH: &str = r#"__sx_zsh_ps1() {
+  local s=$1 o= c n
+  while [ -n "$s" ]; do
+    if [ -n "${__sx_tc-}" ] && [[ $s == '$('"$__sx_tc"')'* ]]; then
+      s=${s#'$('"$__sx_tc"')'}; o+=$'\e]0;[sx] '"${__sx_env_label:+$__sx_env_label }"$'%n@%m: %~\a'
+      continue
+    fi
+    c=${s:0:1}; s=${s:1}
+    case $c in
+      '\')
+        n=${s:0:1}; s=${s:1}
+        case $n in
+          u) o+='%n';; h) o+='%m';; H) o+='%M';; w) o+='%~';; W) o+='%1~';;
+          '$') o+='%(!.#.$)';; '#') o+='%i';; '!') o+='%!';; j) o+='%j';; s) o+=zsh;;
+          n) o+=$'\n';; r) o+=$'\r';; e) o+=$'\e';; a) o+=$'\a';; '\') o+='\';;
+          t) o+='%D{%H:%M:%S}';; T) o+='%D{%I:%M:%S}';; A) o+='%D{%H:%M}';; '@') o+='%D{%I:%M %p}';;
+          d) o+='%D{%a %b %d}';;
+          '[') o+='%{';; ']') o+='%}';;
+          D) if [[ $s == '{'*'}'* ]]; then o+="%D${s%%\}*}}"; s=${s#*\}}; fi;;
+          *) o+=$n;;
+        esac;;
+      '%') o+='%%';;
+      *) o+=$c;;
+    esac
+  done
+  printf '%s' "$o"
+}
+sx-zsh() {
+  case ${1-} in
+    -h|--help)
+      printf '%s\n' 'usage: sx-zsh' 'Starts zsh with your prompt, translated from bash, no aliases and it reads no startup files'
+      return;;
+    '') ;;
+    *) echo "sx-zsh: unknown option $1, see sx-zsh --help" >&2; return 1;;
+  esac
+  command -v zsh >/dev/null || { echo 'sx-zsh: zsh is not installed on this server' >&2; return 1; }
+  env PS1="$(__sx_zsh_ps1 "$PS1")" zsh -f -o promptsubst -i
+}
+"#;
+
 /// `sx-tmux [arguments]` runs tmux so that every window it opens starts with your rc, like the shell
 /// `sx` started: your prompt, aliases and the `sx-*` commands. A pane is a new bash that reads only
 /// the server's own files, so the config tells tmux to start it with the payload. The payload
@@ -626,6 +674,7 @@ fn build_rc_with(
     push_block(&mut out, "clip", CLIP);
     push_block(&mut out, "sx-sudo", SUDO);
     push_block(&mut out, "sx-tmux", TMUX);
+    push_block(&mut out, "sx-zsh", ZSH);
     let names_of = |k: SnippetKind| merged.iter().filter(|m| m.0 == k).flat_map(|m| m.1.clone()).collect::<Vec<_>>();
     let (vim, tmux) = (names_of(SnippetKind::Vim), names_of(SnippetKind::Tmux));
     push_block(&mut out, "sx-info", &info_block(profile, p.prompt.as_deref(), &SentSnippets { shell: &shell, inputrc: &inputrc, vim: &vim, tmux: &tmux }));

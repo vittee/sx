@@ -351,6 +351,29 @@ It takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-
 
 > A tmux server that is already running keeps its own shells, so quit it first (`tmux kill-server`).
 
+### `sx-zsh`
+
+`sx-zsh` starts zsh with your prompt, translated from bash.
+
+**What works**
+
+- Your prompt, translated from the bash.
+- The environment badge.
+- The window title.
+
+**What does not work**
+
+- Your aliases and functions.
+- The server's own zsh setup and your `~/.zshrc`, so no plugins, no `compinit` completion and no saved history.
+- The `sx-*` commands, the `sx-theme` themes and the guard. They belong to the bash shell.
+
+**Caveats**
+
+- A prompt that runs a bash function, such as one that shows the git branch, does not work in zsh.
+  A `$(...)` is kept as text and runs in zsh, where that function does not exist.
+- A `%` inside such a `$(...)` is doubled by the translation, so the command sees the wrong text.
+- An escape the translation does not know loses its backslash and stays as plain text.
+
 ## Environments
 
 An environment marks a group of hosts, such as `prod` or `staging`, so a shell on the wrong one stands out.<br>
@@ -437,7 +460,7 @@ The output and exit status marks need bash 4.4 or newer.
 
 ## Limitations
 
-- The server must run bash. zsh and fish rc files are not supported.
+- The server must run bash. zsh and fish rc files are not supported, `sx-zsh` only gives zsh your prompt.
 - If bash, `base64 -d` or `gunzip` is missing on the server,
   you get the plain login shell and a one-line `sx:` message that gives the reason.
 - Payloads over about 24 KB (encoded) trigger a warning.

@@ -510,7 +510,8 @@ fn rc_with_switches(title: bool, marks: bool) -> String {
 #[test]
 fn a_profile_can_turn_the_window_title_off_and_keep_the_marks() {
     let rc = rc_with_switches(false, true);
-    assert!(!rc.contains("__sx_tc") && !rc.contains(r"\033]0;"), "no title: {rc}");
+    // `sx-zsh` mentions `$__sx_tc` in the translator, so the title is told by its definition
+    assert!(!rc.contains("__sx_tc='") && !rc.contains(r"\033]0;"), "no title: {rc}");
     assert!(rc.contains(r#"PS1="$PS1\[\e]133;B\a\]""#), "B still ends the prompt: {rc}");
     assert!(rc.contains("133;A") && rc.contains("133;C") && rc.contains("133;D"), "{rc}");
 }
@@ -859,6 +860,36 @@ fn sx_tmux_gives_every_window_the_rc_and_keeps_your_own_tmux_config() {
 }
 
 #[test]
+fn sx_zsh_translates_the_bash_prompt_into_a_zsh_prompt() {
+    let Some((out, err)) = run_in_rc(
+        // the echo is on the same line, because the prompt marks are printed between two lines
+        r#"__sx_zsh_ps1 '\u@\h:\w\$ '; echo
+__sx_zsh_ps1 '\[\e[1;31m\]\W\[\e[0m\] 50% \\ \D{%H:%M}\n\# '; echo
+__sx_zsh_ps1 '\q\'; echo
+__sx_env_label=PROD; __sx_tc='printf "\033]0;x %s\a" y'; __sx_zsh_ps1 '\[$('"$__sx_tc"')\]\$ '; echo
+"#,
+    ) else {
+        return;
+    };
+    assert!(!err.contains("command not found"), "{err}");
+    assert!(out.contains("%n@%m:%~%(!.#.$) \n"), "{out}");
+    let esc = '\u{1b}';
+    assert!(out.contains(&format!("%{{{esc}[1;31m%}}%1~%{{{esc}[0m%}} 50%% \\ %D{{%H:%M}}\n%i ")), "{out}");
+    assert!(out.contains("q\n"), "an escape it does not know loses its backslash: {out}");
+    // the title that sx adds to PS1 runs a bash variable, so zsh gets the same title in its own words
+    assert!(out.contains(&format!("%{{{esc}]0;[sx] PROD %n@%m: %~\u{7}%}}%(!.#.$) \n")), "{out}");
+}
+
+#[test]
+fn sx_zsh_has_a_help_text_and_says_when_zsh_is_missing() {
+    let Some((out, err)) = run_in_rc("sx-zsh --help\nsx-zsh -x\necho \"rc=$?\"\nPATH=/nonexistent sx-zsh\necho \"rc=$?\"\n") else { return };
+    assert!(out.contains("usage: sx-zsh") && out.contains("no aliases"), "{out}");
+    assert!(err.contains("sx-zsh: unknown option -x, see sx-zsh --help"), "{err}");
+    assert!(err.contains("sx-zsh: zsh is not installed on this server"), "{err}");
+    assert_eq!(out.matches("rc=1").count(), 2, "{out}");
+}
+
+#[test]
 fn sx_tmux_puts_its_default_command_before_your_config_so_yours_wins() {
     let Some((out, _)) = run_in_rc("__sx_tmux_conf\n") else { return };
     let ours = out.find("set -g default-command").expect("our default-command");
@@ -1047,4 +1078,14 @@ fn sx_info_names_snippets_without_their_kind_suffix() {
         tmux: &names(&["mouse.tmux"]),
     });
     assert!(block.contains("__sx_i_shell='20-aliases'\n__sx_i_inputrc='keys'\n__sx_i_vim='basics, plugins'\n__sx_i_tmux='mouse'\n"), "{block}");
+}
+
+#[test]
+fn sx_zsh_turns_the_real_ps1_of_an_sx_shell_into_a_prompt_with_no_bash_code_in_it() {
+    let Some((out, err)) = run_in_rc("true\n__sx_zsh_ps1 \"$PS1\"; echo\n") else { return };
+    assert!(!err.contains("command not found"), "{err}");
+    let line = out.lines().find(|l| l.contains("%n@%m: %~")).unwrap_or_else(|| panic!("no zsh title in: {out}"));
+    for bad in ["__sx_tc", "printf", "033", "$(", "PWD"] {
+        assert!(!line.contains(bad), "{bad} left in the zsh prompt: {line}");
+    }
 }
