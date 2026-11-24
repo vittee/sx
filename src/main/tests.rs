@@ -1,5 +1,7 @@
 use super::*;
 
+pub mod testutil;
+
 fn host(line: &str) -> Option<String> {
     let args: Vec<String> = line.split_whitespace().map(String::from).collect();
     injectable_host(&args)

@@ -1,5 +1,5 @@
 use super::*;
-use crate::testutil::bash_at_least;
+use crate::tests::testutil::bash_at_least;
 
 fn text(lines: &[Line]) -> Vec<String> {
     lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect()
@@ -175,8 +175,8 @@ fn run_bash(script: &str) -> Option<(String, String)> {
     if !bash_at_least(3, 0) {
         return None;
     }
-    let _bash = crate::testutil::bash_lock();
-    let mut child = crate::testutil::bash()
+    let _bash = crate::tests::testutil::bash_lock();
+    let mut child = crate::tests::testutil::bash()
         .arg("-s")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

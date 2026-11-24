@@ -12,7 +12,7 @@ Nothing is written on the server. The README explains the mechanism, the config 
 - `src/tui`: ratatui screens. `hostedit.rs` is the options form, `hosts.rs` the host list, `tests.rs` the UI tests.
 - `src/completions`: `sx completions` scripts for five shells and `--install`. `sx __complete` is hidden and used by the scripts.
 - `src/history`, `src/log`, `src/prompt`, `src/editor`, `src/highlight`: smaller pieces.
-- `src/testutil.rs`: helpers for tests that start bash, see Conventions.
+- `src/main/testutil.rs`: helpers for tests that start bash, see Conventions.
 
 ## Checks
 
@@ -35,7 +35,7 @@ Use `cargo check`, clippy and test, or build with `--target-dir` somewhere else.
 - ssh keeps the first value of an option. Options sx adds for a host go after what the user typed, so the user's win.
 - Saved connection options live in sx's `config.toml`, never in `~/.ssh/config`.
 - UI tests render a 110x30 `TestBackend`. Reuse the helpers at the top of `src/tui/tests.rs` (`app`, `render`, `key`, `ctrl`, `typed`, `click`, `squash`).
-- A test that starts bash uses `crate::testutil::bash()` and holds `crate::testutil::bash_lock()` while it runs.
+- A test that starts bash uses `crate::tests::testutil::bash()` and holds `crate::tests::testutil::bash_lock()` while it runs.
   Git Bash flips the console mode on Windows, and parallel bash processes garble the terminal.
 - Usage text follows `sx --help`: `[]` is optional, `<>` is required.
 - `README.md` has CRLF line endings. Keep them, for example by editing it with Python and `newline=''`.
