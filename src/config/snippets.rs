@@ -311,7 +311,7 @@ const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 /// from anywhere earlier. The code sits inside `PS1` as a command substitution, not in a function,
 /// so it also runs in a shell that did not inherit one, such as the one `sudo -i` starts.
 ///
-/// A host tagged with an environment (see `envs.rs`) also gets `__sx_env_label` in the title, and
+/// A host tagged with an environment (see `envs/mod.rs`) also gets `__sx_env_label` in the title, and
 /// `__sx_env_badge`, a colored label, in the prompt right before its `$` or `#` (see `BADGE_FUNCTION`).
 ///
 /// The marks: the same hooks mark the prompt for the terminal (OSC 133, "semantic prompt"): `A` starts the
