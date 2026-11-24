@@ -432,7 +432,7 @@ fn clicking_tabs_switches_screens() {
     click(&mut app, r.x + 1, r.y);
     assert_eq!(app.tab, Tab::Profiles);
     let screen = render(&mut app);
-    assert!(screen.contains("payload ") && screen.contains("Prompt"), "{screen}");
+    assert!(screen.contains("Payload") && screen.contains("Prompt"), "{screen}");
 }
 
 #[test]
@@ -570,7 +570,7 @@ fn duplicate_profile_copies_snippets_and_prompt_and_selects_the_copy() {
     assert_eq!(app.cfg.default_profile, "default"); // the copy is not made default
     assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
     let screen = render(&mut app);
-    assert!(screen.contains("payload ") && screen.contains("(•) fino"), "{screen}");
+    assert!(screen.contains("Payload") && screen.contains("(•) fino"), "{screen}");
 }
 
 #[test]
@@ -800,8 +800,8 @@ fn payload_size_is_a_compact_readout_not_a_bar() {
     let screen = render(&mut app);
     let size = app.payload_size("default").unwrap();
     assert!(size > 0);
-    assert!(screen.contains(&format!("payload {size}/{} B", payload::WARN_ENCODED_LEN)), "{screen}");
-    assert!(!screen.contains("Payload size"), "{screen}");
+    assert!(screen.contains(&format!("{size}/{} B", payload::WARN_ENCODED_LEN)), "{screen}");
+    assert!(screen.contains("Payload") && !screen.contains("Payload size"), "{screen}");
 }
 
 fn many_snippets(app: &mut App, n: usize) {

@@ -316,7 +316,8 @@ impl App {
 
     pub(super) fn draw_profiles(&mut self, f: &mut Frame, area: Rect) {
         let [left_a, right] = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).areas(area);
-        let [left, term_a] = Layout::vertical([Constraint::Min(3), Constraint::Length(4)]).areas(left_a);
+        let [left, term_a, size_a] =
+            Layout::vertical([Constraint::Min(3), Constraint::Length(4), Constraint::Length(3)]).areas(left_a);
 
         let block = Block::bordered().title(" Profiles ");
         let prof_inner = block.inner(left);
@@ -337,32 +338,17 @@ impl App {
 
         let profile = self.selected_profile();
         self.draw_terminal_switches(f, term_a, profile.as_deref());
+        self.draw_payload_size(f, size_a, profile.as_deref());
         // "none" row + themes + borders, but on a short terminal leave room for the snippet grid
         // (the theme list scrolls) while keeping a two-line preview readable.
         let prompt_h = (self.theme_names().len() as u16 + 3).min(right.height.saturating_sub(5)).max(8);
         let [prompt_a, chk_a] = Layout::vertical([Constraint::Length(prompt_h), Constraint::Min(3)]).areas(right);
         self.draw_prompt_picker(f, prompt_a);
 
-        // Payload size is a compact readout on the bottom border, red once over the limit.
-        let size = profile.as_deref().and_then(|p| self.payload_size(p)).unwrap_or(0);
-        let limit = payload::WARN_ENCODED_LEN;
-        let color = match size {
-            s if s >= limit => Color::Red,
-            s if s * 4 >= limit * 3 => Color::Yellow,
-            _ => Color::Green,
-        };
-        let readout = Line::from(vec![
-            Span::raw(" payload "),
-            Span::styled(format!("{size}/{limit} B"), Style::new().fg(color)),
-            Span::raw(" "),
-        ]);
-
         let focused = self.prof_focus == ProfFocus::Snippets;
         let border = if focused { Color::Cyan } else { Color::Reset };
-        // Bottom border, left-aligned so it stays near the list instead of the far corner.
         let block = Block::bordered()
             .title(" Snippets ")
-            .title_bottom(readout)
             .border_style(Style::new().fg(border));
         let inner = block.inner(chk_a);
         f.render_widget(block, chk_a);
@@ -413,6 +399,21 @@ impl App {
         f.render_widget(Paragraph::new(lines), inner);
         let bar_a = Rect { x: chk_a.x, width: chk_a.width, ..inner };
         Self::scrollbar(f, bar_a, total_rows, self.chk_top);
+    }
+
+    /// The size of what a connect sends for the profile, red once it is over the limit.
+    fn draw_payload_size(&mut self, f: &mut Frame, area: Rect, profile: Option<&str>) {
+        let size = profile.and_then(|p| self.payload_size(p)).unwrap_or(0);
+        let limit = payload::WARN_ENCODED_LEN;
+        let color = match size {
+            s if s >= limit => Color::Red,
+            s if s * 4 >= limit * 3 => Color::Yellow,
+            _ => Color::Green,
+        };
+        let block = Block::bordered().title(" Payload ");
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        f.render_widget(Paragraph::new(Span::styled(format!("{size}/{limit} B"), Style::new().fg(color))), inner);
     }
 
     /// The two terminal integration switches of the selected profile, under the profile list.
