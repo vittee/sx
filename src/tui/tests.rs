@@ -2066,6 +2066,55 @@ fn the_footer_shows_tab_on_every_page_and_esc_goes_back_one_pane_in_profiles() {
 }
 
 #[test]
+fn wheel_over_the_prompt_pane_does_nothing_until_it_has_focus() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    render(&mut app);
+    assert_eq!(app.prof_focus, ProfFocus::List);
+    let l = app.hits.prompt_list;
+    let row = app.prompt_cursor_row();
+    let before = squash(&render(&mut app));
+    wheel(&mut app, l.x + 8, l.y + 1, true);
+    assert_eq!(app.prompt_cursor_row(), row);
+    assert_eq!(squash(&render(&mut app)), before);
+    key(&mut app, KeyCode::Right);
+    wheel(&mut app, l.x + 8, l.y + 1, true);
+    assert_eq!(app.prompt_cursor_row(), row - 1);
+}
+
+#[test]
+fn double_clicking_a_prompt_snippet_opens_it_in_the_snippets_tab() {
+    let (_t, mut app) = app();
+    config::write_snippet(&app.dir, "mine.prompt", "export PS1='mine> '
+").unwrap();
+    app.reload_snippets(None);
+    app.switch_tab(Tab::Profiles);
+    render(&mut app);
+    let l = app.hits.prompt_list;
+    let row = app.theme_names().iter().position(|n| n == "mine.prompt").unwrap() + 1;
+    app.prompt_cursor = Some(("default".into(), row)); // scrolls the list down to it
+    render(&mut app);
+    let y = l.y + (row - app.prompt_state.offset()) as u16;
+    click(&mut app, l.x + 8, y);
+    assert_eq!(app.tab, Tab::Profiles, "one click only previews");
+    click(&mut app, l.x + 8, y);
+    assert_eq!(app.tab, Tab::Snippets);
+    assert_eq!(app.selected_snippet().as_deref(), Some("mine.prompt"));
+    assert_eq!(app.editor_name.as_deref(), Some("mine.prompt"));
+}
+
+#[test]
+fn double_clicking_a_built_in_prompt_stays_on_the_profiles_page() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    render(&mut app);
+    let l = app.hits.prompt_list;
+    click(&mut app, l.x + 8, l.y + 1);
+    click(&mut app, l.x + 8, l.y + 1);
+    assert_eq!(app.tab, Tab::Profiles);
+}
+
+#[test]
 fn the_profiles_page_shows_the_description_of_the_snippet_under_the_cursor() {
     let (_t, mut app) = app();
     config::write_snippet(&app.dir, "01-first", "---\ndescription: The first one\n---\nx=1\n").unwrap();

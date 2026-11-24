@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// Added to a prompt row to tell its clicks from those on the snippet grid.
+const PROMPT_ROW_BASE: usize = 1 << 20;
+
 impl App {
     pub(super) fn profile_names(&self) -> Vec<String> {
         self.cfg.profiles.keys().cloned().collect()
@@ -164,8 +167,13 @@ impl App {
     /// Shows grid item `i` in the Snippets tab, selected in the list and open in the editor.
     fn open_snippet(&mut self, i: usize) {
         let Some(name) = self.grid_items().get(i).cloned() else { return };
+        self.open_named_snippet(&name);
+    }
+
+    /// Switches to the Snippets tab with `name` selected.
+    fn open_named_snippet(&mut self, name: &str) {
         self.switch_tab(Tab::Snippets);
-        if let Some(at) = self.snippets.iter().position(|s| *s == name) {
+        if let Some(at) = self.snippets.iter().position(|s| s == name) {
             self.select_snippet(at);
         }
     }
@@ -268,7 +276,10 @@ impl App {
                 let len = self.grid_items().len();
                 Self::move_sel(&mut self.chk_state, len, d);
             } else if inside(prompts, x, y) {
-                self.move_prompt(d);
+                // an unfocused pane ignores the wheel, so the preview only changes once it has focus
+                if self.prof_focus == ProfFocus::Prompt {
+                    self.move_prompt(d);
+                }
             } else {
                 let len = self.cfg.profiles.len();
                 Self::move_sel(&mut self.prof_state, len, d);
@@ -292,6 +303,13 @@ impl App {
                     self.set_prompt_index(i);
                 } else if let Some(profile) = self.selected_profile() {
                     self.prompt_cursor = Some((profile, i));
+                    // a row far past the grid's indexes, so the two never count as one double click
+                    let own = i.checked_sub(1).and_then(|t| self.theme_names().get(t).cloned());
+                    if let Some(name) = own.filter(|n| config::is_prompt_snippet(n))
+                        && self.is_double_click(Tab::Profiles, PROMPT_ROW_BASE + i)
+                    {
+                        self.open_named_snippet(&name);
+                    }
                 }
                 self.prof_focus = ProfFocus::Prompt;
             }
