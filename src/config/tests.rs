@@ -686,7 +686,7 @@ echo \"rc=$?\"
     assert!(out.contains("-l, --list   list the theme names"), "{out}");
     assert!(out.contains("usage: sx-sudo [user]") && out.contains("like sudo -i"), "{out}");
     assert!(out.contains("usage: clip [text]") && out.contains("cat file | clip"), "{out}");
-    assert!(out.contains("usage: sx-info") && out.contains("the size of what was sent"), "{out}");
+    assert!(out.contains("usage: sx-info") && out.contains("the payload size"), "{out}");
     assert_eq!(out.matches("rc=1").count(), 4, "an unknown option fails: {out}");
 }
 
@@ -696,14 +696,35 @@ fn sx_info_shows_the_profile_the_prompt_and_the_snippets() {
     let first = out.split("---").next().unwrap();
     // the prompt marks can sit in front of the first line
     let line = |label: &str| first.lines().find_map(|l| l.find(label).map(|i| l[i..].to_string())).unwrap_or_else(|| panic!("no {label} line: {out}"));
-    assert!(line("sx  ").contains(env!("CARGO_PKG_VERSION")), "{out}");
+    assert!(line("sx version").contains(env!("CARGO_PKG_VERSION")), "{out}");
     assert!(line("profile").ends_with("default"), "{out}");
     assert!(line("prompt").ends_with("fino"), "{out}");
-    assert!(line("snippets").ends_with("20-aliases"), "{out}");
-    assert!(line("sent").ends_with("6 bytes"), "{out}");
+    assert!(line("shell snippets").ends_with("20-aliases"), "{out}");
+    assert!(line("payload").ends_with("6 bytes, compressed"), "{out}");
+    assert!(line("server").len() > "server".len(), "{out}");
     assert!(!first.contains("\nvim "), "no vim line without a vim snippet: {out}");
     let after = out.rsplit("---").next().unwrap();
     assert!(after.lines().any(|l| l.contains("prompt ") && l.ends_with("robbyrussell")), "sx-theme changes the prompt line: {out}");
+}
+
+#[test]
+fn sx_info_lists_the_guarded_commands_only_when_there_are_some() {
+    let Some((out, _)) = run_in_rc_after("__sx_payload=abcdef", "sx-info
+echo ---
+__sx_guard_patterns=('rm -r*' 'shutdown*')
+sx-info
+") else { return };
+    let (before, after) = out.split_once("---").unwrap();
+    assert!(!before.contains("guarded"), "no guarded line without a guard: {out}");
+    assert!(after.lines().any(|l| l.contains("guarded commands") && l.ends_with("rm -r*, shutdown*")), "{out}");
+}
+
+#[test]
+fn sx_info_is_colored_only_on_a_terminal() {
+    // the test reads a pipe, so there is no color
+    let Some((out, _)) = run_in_rc_after("__sx_payload=abcdef", "sx-info\n") else { return };
+    // the prompt marks are escapes too, but they are not colors
+    assert!(!out.contains("\u{1b}[") && out.contains("profile"), "no color on a pipe: {out}");
 }
 
 #[test]
@@ -1014,4 +1035,16 @@ fn the_guard_is_sent_only_to_a_host_whose_environment_has_one() {
     assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "web-2", false).contains("trap __sx_guard"));
     assert!(!build_rc_for_host(tmp.path(), &cfg, "default", "other", false).contains("trap __sx_guard"));
     assert!(!build_rc(tmp.path(), &cfg, "default").contains("trap __sx_guard"));
+}
+
+#[test]
+fn sx_info_names_snippets_without_their_kind_suffix() {
+    let names = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let block = snippets::info_block("default", None, &snippets::SentSnippets {
+        shell: &names(&["20-aliases"]),
+        inputrc: &names(&["keys.inputrc"]),
+        vim: &names(&["basics.vim", "plugins.vim"]),
+        tmux: &names(&["mouse.tmux"]),
+    });
+    assert!(block.contains("__sx_i_shell='20-aliases'\n__sx_i_inputrc='keys'\n__sx_i_vim='basics, plugins'\n__sx_i_tmux='mouse'\n"), "{block}");
 }

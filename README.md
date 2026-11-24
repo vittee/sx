@@ -328,7 +328,8 @@ Inside tmux, add `set -g set-clipboard on` to your tmux config.
 
 ### `sx-info`
 
-`sx-info` shows what `sx` set up in this shell: the profile, prompt theme, snippets, host, bash version and size sent.
+`sx-info` shows the `sx` version, the server, the environment and its guarded commands (when it has a guard), what `sx` set up in this shell (the profile, prompt theme and snippets), the bash version and the payload size (the compressed setup that `sx` sent).
+The names are colored when the output is a terminal, unless `NO_COLOR` is set.
 
 ### `sx-sudo`
 

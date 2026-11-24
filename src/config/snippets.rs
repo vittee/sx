@@ -30,6 +30,11 @@ pub fn snippet_kind(name: &str) -> SnippetKind {
     KIND_SUFFIXES.iter().find(|(s, _)| name.ends_with(s)).map_or(SnippetKind::Shell, |(_, k)| *k)
 }
 
+/// The name of a snippet without its kind suffix (`basics.vim` is `basics`).
+fn bare_name(name: &str) -> &str {
+    KIND_SUFFIXES.iter().find_map(|(s, _)| name.strip_suffix(s)).unwrap_or(name)
+}
+
 /// File name of a snippet: shell snippets get `.sh`, the other kinds keep the name as is.
 pub fn snippet_file(name: &str) -> String {
     match snippet_kind(name) {
@@ -502,19 +507,32 @@ pub fn theme_ps1(dir: &Path, name: &str) -> Option<String> {
 const INFO: &str = r#"sx-info() {
   case ${1-} in
     -h|--help)
-      printf '%s\n' 'usage: sx-info' 'Shows what sx gave this shell: the profile, the prompt, the snippets,' 'the host and the size of what was sent.'
+      printf '%s\n' 'usage: sx-info' 'Shows the sx version, the server, the environment and its guarded commands,' 'what sx gave this shell (profile, prompt, snippets), the bash version and the payload size.'
       return;;
     '') ;;
     *) echo "sx-info: unknown option $1, see sx-info --help" >&2; return 1;;
   esac
   [ -n "${__sx_payload-}" ] || { echo 'sx-info: this shell was not started by sx' >&2; return 1; }
   local theme=${__sx_theme_cur:-$__sx_i_prompt}
-  set -- sx "$__sx_i_ver" profile "$__sx_i_profile"
-  set -- "$@" prompt "${theme:-none}" snippets "${__sx_i_shell:-none}"
-  [ -z "$__sx_i_vim" ] || set -- "$@" vim "$__sx_i_vim"
-  [ -z "$__sx_i_tmux" ] || set -- "$@" tmux "$__sx_i_tmux"
-  set -- "$@" host "${USER:-$(id -un)}@${HOSTNAME%%.*}" bash "${BASH_VERSION%%[!0-9.]*}" sent "${#__sx_payload} bytes"
-  printf '%-12s %s\n' "$@"
+  # the sx version, where you are, then what sx gave you, then bash and the size
+  set -- "sx version" "$__sx_i_ver" server "${HOSTNAME:-$(hostname)}"
+  [ -z "${__sx_env_label-}" ] || set -- "$@" environment "$__sx_env_label"
+  if [ "${#__sx_guard_patterns[@]}" -gt 0 ]; then
+    local g; printf -v g '%s, ' "${__sx_guard_patterns[@]}"; set -- "$@" "guarded commands" "${g%, }"
+  fi
+  set -- "$@" profile "$__sx_i_profile" prompt "${theme:-none}" "shell snippets" "${__sx_i_shell:-none}"
+  [ -z "$__sx_i_inputrc" ] || set -- "$@" "inputrc snippets" "$__sx_i_inputrc"
+  [ -z "$__sx_i_vim" ] || set -- "$@" "vim snippets" "$__sx_i_vim"
+  [ -z "$__sx_i_tmux" ] || set -- "$@" "tmux snippets" "$__sx_i_tmux"
+  set -- "$@" bash "${BASH_VERSION%%[!0-9.]*}" "payload size" "${#__sx_payload} bytes, compressed"
+  # colors only on a terminal, and not when NO_COLOR is set
+  local b= r= c=
+  if [ -t 1 ] && [ -z "${NO_COLOR-}" ]; then b=$'\e[36m' r=$'\e[0m'; fi
+  while [ $# -gt 1 ]; do
+    c=; [ -z "$b" ] || case $1 in "sx version"|environment) c=$'\e[1m';; "guarded commands") c=$'\e[33m';; esac
+    printf '%s%-17s%s %s%s%s\n' "$b" "$1" "$r" "$c" "$2" "${c:+$r}"
+    shift 2
+  done
 }
 "#;
 
@@ -522,15 +540,29 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-fn info_block(profile: &str, prompt: Option<&str>, plain: &[String], vim: &[String], tmux: &[String]) -> String {
+/// The names of the snippets sent, by kind, for `sx-info`.
+pub(super) struct SentSnippets<'a> {
+    pub(super) shell: &'a [String],
+    pub(super) inputrc: &'a [String],
+    pub(super) vim: &'a [String],
+    pub(super) tmux: &'a [String],
+}
+
+/// The snippet names for `sx-info`. The line says the kind, so the suffix is left out.
+fn bare_names(names: &[String]) -> String {
+    names.iter().map(|n| bare_name(n)).collect::<Vec<_>>().join(", ")
+}
+
+pub(super) fn info_block(profile: &str, prompt: Option<&str>, sent: &SentSnippets) -> String {
     format!(
-        "__sx_i_ver={}\n__sx_i_profile={}\n__sx_i_prompt={}\n__sx_i_shell={}\n__sx_i_vim={}\n__sx_i_tmux={}\n{INFO}",
+        "__sx_i_ver={}\n__sx_i_profile={}\n__sx_i_prompt={}\n__sx_i_shell={}\n__sx_i_inputrc={}\n__sx_i_vim={}\n__sx_i_tmux={}\n{INFO}",
         sh_quote(env!("CARGO_PKG_VERSION")),
         sh_quote(profile),
         sh_quote(prompt.unwrap_or("")),
-        sh_quote(&plain.join(", ")),
-        sh_quote(&vim.join(", ")),
-        sh_quote(&tmux.join(", ")),
+        sh_quote(&bare_names(sent.shell)),
+        sh_quote(&bare_names(sent.inputrc)),
+        sh_quote(&bare_names(sent.vim)),
+        sh_quote(&bare_names(sent.tmux)),
     )
 }
 
@@ -568,7 +600,7 @@ fn build_rc_with(
     // Every vim snippet is joined into one config, and every tmux snippet into one, because the
     // server runs the program with a single file. They go after the shell snippets.
     let mut merged: Vec<(SnippetKind, Vec<String>, String)> = Vec::new();
-    let mut plain: Vec<String> = Vec::new();
+    let (mut shell, mut inputrc): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
     for name in list_snippets(dir).into_iter().filter(|n| wanted(n) && !is_prompt_snippet(n)) {
         let Ok(text) = read_body(dir, &name) else { continue };
         let kind = snippet_kind(&name);
@@ -586,7 +618,7 @@ fn build_rc_with(
             continue;
         }
         push_block(&mut out, &name, &wrap_snippet(kind, &text));
-        plain.push(name);
+        if kind == SnippetKind::Inputrc { inputrc.push(name) } else { shell.push(name) }
     }
     for (kind, names, text) in &merged {
         push_block(&mut out, &names.join(", "), &wrap_snippet(*kind, text));
@@ -595,7 +627,8 @@ fn build_rc_with(
     push_block(&mut out, "sx-sudo", SUDO);
     push_block(&mut out, "sx-tmux", TMUX);
     let names_of = |k: SnippetKind| merged.iter().filter(|m| m.0 == k).flat_map(|m| m.1.clone()).collect::<Vec<_>>();
-    push_block(&mut out, "sx-info", &info_block(profile, p.prompt.as_deref(), &plain, &names_of(SnippetKind::Vim), &names_of(SnippetKind::Tmux)));
+    let (vim, tmux) = (names_of(SnippetKind::Vim), names_of(SnippetKind::Tmux));
+    push_block(&mut out, "sx-info", &info_block(profile, p.prompt.as_deref(), &SentSnippets { shell: &shell, inputrc: &inputrc, vim: &vim, tmux: &tmux }));
     if let Some(name) = p.prompt.as_deref()
         && let Some(text) = theme_text(dir, name)
     {
