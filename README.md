@@ -36,6 +36,7 @@ Details are under [How it works](#how-it-works).
 - A terminal UI to browse hosts, edit snippets and see recent sessions for each host.
 - Built-in [snippet presets](#snippet-presets) and [prompt themes](#prompt-themes), ready to turn on. You can edit them or write your own.
 - Profiles that group snippets and a prompt, assigned per host.
+- [Environments](#environments) such as `prod`: a colored badge in the prompt and the window title, a question before you connect, and a guard for dangerous commands.
 - The same arguments as `ssh`.
 
 Quick start:
@@ -192,12 +193,15 @@ Each profile has its own prompt and snippets.
 
 An environment is a name, a color and host name patterns, see [Environments](#environments).
 
+![The Envs page](demo/screens/envs.png)
+
 #### Keys
 - `Ctrl-N` creates an environment
 - `Ctrl-Y` copies the selected environment
 - `Ctrl-R` renames it
 - `Ctrl-D` deletes it
 - `Enter` edits it
+- In the form, `Tab`, `Up` and `Down` move between the rows, a click on a box or `Space` switches a feature, and the text rows take the cursor keys
 
 ## Configurations
 

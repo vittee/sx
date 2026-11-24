@@ -7,9 +7,9 @@ Nothing is written on the server. The README explains the mechanism, the config 
 
 - `src/main.rs`: argument handling, builds the ssh command line, `--options`, `init`.
 - `src/bootstrap`, `src/payload`: the `RemoteCommand` and the encoded rc sent through `SetEnv`.
-- `src/config`: `config.toml`, snippets, profiles, per-host `HostPrefs` and named `ConnOptions`.
+- `src/config`: `config.toml`, snippets, profiles, per-host `HostPrefs` and named `ConnOptions`. `envs/` holds the environments, their badge and guard.
 - `src/ssh_config`: hosts from `~/.ssh/config` and `known_hosts`. It never writes there.
-- `src/tui`: ratatui screens. `hostedit.rs` is the options form, `hosts.rs` the host list, `tests.rs` the UI tests.
+- `src/tui`: ratatui screens. `hostedit.rs` is the options form, `hosts.rs` the host list, `envs.rs` the Envs page, `tests.rs` the UI tests.
 - `src/completions`: `sx completions` scripts for five shells and `--install`. `sx __complete` is hidden and used by the scripts.
 - `src/history`, `src/log`, `src/prompt`, `src/editor`, `src/highlight`: smaller pieces.
 - `src/main/testutil.rs`: helpers for tests that start bash, see Conventions.
