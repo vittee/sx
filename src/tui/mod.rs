@@ -93,6 +93,8 @@ struct Hits {
     snip_list: Rect,
     editor: Rect,
     prof_list: Rect,
+    /// The two terminal switches under the profile list: the title row, then the marks row.
+    prof_term: Rect,
     prompt_list: Rect,
     chk_list: Rect,
     /// Snippet checklist grid, filled column by column: items per column and width of one cell.

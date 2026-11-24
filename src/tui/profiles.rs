@@ -147,6 +147,20 @@ impl App {
         self.save_cfg();
     }
 
+    /// Turns the window title (`marks` false) or the prompt marks (`marks` true) on or off for the
+    /// selected profile.
+    pub(super) fn toggle_terminal(&mut self, marks: bool) {
+        let Some(profile) = self.selected_profile() else { return };
+        if let Some(p) = self.cfg.profiles.get_mut(&profile) {
+            if marks {
+                p.marks = !p.marks;
+            } else {
+                p.title = !p.title;
+            }
+            self.save_cfg();
+        }
+    }
+
     /// Shows grid item `i` in the Snippets tab, selected in the list and open in the editor.
     fn open_snippet(&mut self, i: usize) {
         let Some(name) = self.grid_items().get(i).cloned() else { return };
@@ -245,6 +259,10 @@ impl App {
 
     pub(super) fn mouse_profiles(&mut self, x: u16, y: u16, wheel: Option<isize>, click: bool) {
         let (plist, prompts, clist) = (self.hits.prof_list, self.hits.prompt_list, self.hits.chk_list);
+        let term = self.hits.prof_term;
+        if click && wheel.is_none() && inside(term, x, y) {
+            return self.toggle_terminal(y > term.y);
+        }
         if let Some(d) = wheel {
             if inside(clist, x, y) {
                 let len = self.grid_items().len();
@@ -297,7 +315,8 @@ impl App {
     }
 
     pub(super) fn draw_profiles(&mut self, f: &mut Frame, area: Rect) {
-        let [left, right] = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).areas(area);
+        let [left_a, right] = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).areas(area);
+        let [left, term_a] = Layout::vertical([Constraint::Min(3), Constraint::Length(4)]).areas(left_a);
 
         let block = Block::bordered().title(" Profiles ");
         let prof_inner = block.inner(left);
@@ -317,6 +336,7 @@ impl App {
         Self::scrollbar(f, bar_a, self.cfg.profiles.len(), self.prof_state.offset());
 
         let profile = self.selected_profile();
+        self.draw_terminal_switches(f, term_a, profile.as_deref());
         // "none" row + themes + borders, but on a short terminal leave room for the snippet grid
         // (the theme list scrolls) while keeping a two-line preview readable.
         let prompt_h = (self.theme_names().len() as u16 + 3).min(right.height.saturating_sub(5)).max(8);
@@ -393,6 +413,21 @@ impl App {
         f.render_widget(Paragraph::new(lines), inner);
         let bar_a = Rect { x: chk_a.x, width: chk_a.width, ..inner };
         Self::scrollbar(f, bar_a, total_rows, self.chk_top);
+    }
+
+    /// The two terminal integration switches of the selected profile, under the profile list.
+    fn draw_terminal_switches(&mut self, f: &mut Frame, area: Rect, profile: Option<&str>) {
+        let block = Block::bordered().title(" Terminal ");
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        self.hits.prof_term = inner;
+        let p = profile.and_then(|p| self.cfg.profiles.get(p)).cloned().unwrap_or_default();
+        let row = |on: bool, label: &str| {
+            let mark = Style::new().fg(if on { Color::Green } else { Color::DarkGray });
+            Line::from(vec![Span::styled(if on { "[x] " } else { "[ ] " }, mark), Span::raw(label.to_string())])
+        };
+        let lines = vec![row(p.title, "Window title"), row(p.marks, "Prompt marks")];
+        f.render_widget(Paragraph::new(lines), inner);
     }
 
     /// Radio list of built-in prompt themes for the selected profile, with a live preview.

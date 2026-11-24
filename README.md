@@ -178,6 +178,7 @@ Each profile has its own prompt and snippets.
 - `Ctrl-Y` copies the selected profile
 - `Ctrl-D` deletes it
 - `Ctrl-G` makes it the default
+- Clicking `Window title` or `Prompt marks` in the Terminal box turns it on or off for the profile, see [Terminal integration](#terminal-integration)
 - `Ctrl-E` edits the selected prompt theme
 
 ## Configurations
@@ -315,6 +316,17 @@ It takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-
 > A tmux server that is already running keeps its own shells, so quit it first (`tmux kill-server`).
 
 ## Terminal integration
+
+`sx` talks to your terminal in two ways, both on by default: the window title and the prompt marks.<br>
+A profile can turn each off, with a click in the Terminal box on the Profiles page, or in `config.toml`:
+
+```toml
+[profiles.default]
+title = false   # no window title
+marks = false   # no prompt marks
+```
+
+The `[sx]` title on your own machine, while the TUI is open, is not affected.
 
 ### Window and tab title
 

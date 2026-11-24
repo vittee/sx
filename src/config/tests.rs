@@ -119,7 +119,7 @@ fn generated_shell_actually_works_in_bash() {
     }
     let tmp = tempfile::tempdir().unwrap();
     let mut cfg = Config::default();
-    cfg.profiles.insert("p".into(), Profile { snippets: vec!["v.vim".into()], prompt: None });
+    cfg.profiles.insert("p".into(), Profile { snippets: vec!["v.vim".into()], ..Profile::default() });
     write_snippet(tmp.path(), "v.vim", "set number\nset tw=80\n").unwrap();
     let rc = build_rc(tmp.path(), &cfg, "p");
     // Stand in for the real editor: `command vim -u FILE` prints FILE.
@@ -499,6 +499,64 @@ fn the_prompt_is_marked_with_osc_133() {
     assert!(rc.contains(r"\033]133;D;%s\a"), "D ends the command: {rc}");
 }
 
+fn rc_with_switches(title: bool, marks: bool) -> String {
+    let (tmp, mut cfg) = setup();
+    let p = cfg.profiles.get_mut("default").unwrap();
+    (p.title, p.marks) = (title, marks);
+    build_rc(tmp.path(), &cfg, "default")
+}
+
+#[test]
+fn a_profile_can_turn_the_window_title_off_and_keep_the_marks() {
+    let rc = rc_with_switches(false, true);
+    assert!(!rc.contains("__sx_tc") && !rc.contains(r"\033]0;"), "no title: {rc}");
+    assert!(rc.contains(r#"PS1="$PS1\[\e]133;B\a\]""#), "B still ends the prompt: {rc}");
+    assert!(rc.contains("133;A") && rc.contains("133;C") && rc.contains("133;D"), "{rc}");
+}
+
+#[test]
+fn a_profile_can_turn_the_marks_off_and_keep_the_title() {
+    let rc = rc_with_switches(true, false);
+    assert!(rc.contains(r"\033]0;[sx] "), "{rc}");
+    assert!(rc.contains(r#"PS1="$PS1\[\$($__sx_tc)\]""#), "{rc}");
+    assert!(!rc.contains("133;"), "no marks: {rc}");
+    assert!(rc.contains("return $s; }"), "the hook must keep $?: {rc}");
+}
+
+#[test]
+fn a_profile_with_both_switched_off_sends_no_terminal_integration() {
+    let rc = rc_with_switches(false, false);
+    assert!(!rc.contains("# --- title ---") && !rc.contains("__sx_title") && !rc.contains("133;"), "{rc}");
+}
+
+#[test]
+fn the_terminal_switches_are_written_to_config_toml_only_when_off() {
+    let (_tmp, mut cfg) = setup();
+    let on = toml::to_string(&cfg).unwrap();
+    assert!(!on.contains("title") && !on.contains("marks"), "{on}");
+    cfg.profiles.get_mut("default").unwrap().marks = false;
+    let off = toml::to_string(&cfg).unwrap();
+    assert!(off.contains("marks = false") && !off.contains("title"), "{off}");
+    let back: Config = toml::from_str(&off).unwrap();
+    assert!(back.profiles["default"].title && !back.profiles["default"].marks);
+}
+
+#[test]
+fn each_switch_works_in_a_real_bash() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
+    let script = "cd /tmp; false; __sx_title; echo \"status=$?\"; t=${PS1@P}\n\
+        case $t in *'0;[sx] '*) echo TITLE;; esac\n\
+        case $t in *'133;'*) echo MARKS;; esac\n";
+    let on = run_in_rc_with(|_| {}, "", script).unwrap().0;
+    assert!(on.contains("TITLE") && on.contains("MARKS") && on.contains("status=1"), "{on}");
+    let no_title = run_in_rc_with(|c| c.profiles.get_mut("default").unwrap().title = false, "", script).unwrap().0;
+    assert!(!no_title.contains("TITLE") && no_title.contains("MARKS") && no_title.contains("status=1"), "{no_title}");
+    let no_marks = run_in_rc_with(|c| c.profiles.get_mut("default").unwrap().marks = false, "", script).unwrap().0;
+    assert!(no_marks.contains("TITLE") && !no_marks.contains("MARKS") && no_marks.contains("status=1"), "{no_marks}");
+}
+
 #[test]
 fn colorterm_is_created_off_and_sets_truecolor_when_turned_on() {
     let (tmp, mut cfg) = setup();
@@ -557,12 +615,18 @@ fn run_in_rc(script: &str) -> Option<(String, String)> {
 
 /// [`run_in_rc`] with `before` run first, for example to set an environment variable the rc reads.
 fn run_in_rc_after(before: &str, script: &str) -> Option<(String, String)> {
+    run_in_rc_with(|_| {}, before, script)
+}
+
+/// [`run_in_rc_after`] with `edit` applied to the config first, for example to switch a profile option.
+fn run_in_rc_with(edit: impl FnOnce(&mut Config), before: &str, script: &str) -> Option<(String, String)> {
     use std::io::Write;
     if !bash_at_least(3, 0) {
         return None;
     }
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", Some("fino"));
+    edit(&mut cfg);
     let rc = build_rc(tmp.path(), &cfg, "default");
     let _bash = crate::tests::testutil::bash_lock();
     let mut child = crate::tests::testutil::bash()

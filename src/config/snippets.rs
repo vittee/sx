@@ -186,25 +186,58 @@ sx-tmux() {
 const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 [ -n \"$__sx_t0\" ] && command -v sx-theme >/dev/null && sx-theme \"$__sx_t0\" 2>/dev/null; unset __sx_t0\n";
 
-/// Sets the window and tab title of your terminal (OSC 0) to `[sx] user@host: dir` at every prompt,
-/// so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence. It is added to the
-/// end of `PS1`, inside `\[ \]` so it has no width, because bash prints `PS1` after `PROMPT_COMMAND`
-/// and a server's own `PS1` usually sets a title of its own, which would win from anywhere earlier.
-/// The code sits inside `PS1` as a command substitution, not in a function, so it also runs in a
-/// shell that did not inherit one, such as the one `sudo -i` starts.
+/// The server side of terminal integration, built from the profile's two switches: the window
+/// title (`title`) and the prompt marks (`marks`). With both off there is nothing to send.
 ///
-/// The same hooks mark the prompt for the terminal (OSC 133, "semantic prompt"): `A` starts the
+/// The title: the terminal's window and tab title (OSC 0) is set to `[sx] user@host: dir` at every
+/// prompt, so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence.
+/// It is added to the end of `PS1`, inside `\[ \]` so it has no width, because bash prints `PS1`
+/// after `PROMPT_COMMAND` and a server's own `PS1` usually sets a title of its own, which would win
+/// from anywhere earlier. The code sits inside `PS1` as a command substitution, not in a function,
+/// so it also runs in a shell that did not inherit one, such as the one `sudo -i` starts.
+///
+/// The marks: the same hooks mark the prompt for the terminal (OSC 133, "semantic prompt"): `A` starts the
 /// prompt, at the front of `PS1`, `B` ends it, after the title, `C` starts the command's output
 /// (`PS0`, bash 4.4 or newer), and `D;status` ends the command, sent before the next prompt except
 /// the first. A terminal that knows them can jump between prompts, select one command's output and
 /// mark failed commands. `__sx_ps1` adds the marks to `PS1`, once, also after `sx-theme` replaced it.
 /// `__sx_title` (in `PROMPT_COMMAND`) sends `D`, calls `__sx_ps1`, and returns the status it got so
 /// `$?` is intact.
-const TITLE: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$HOME"}";; esac;printf "\033]0;[sx] %s@%s: %s\a" "${USER:-$(id -un)}" "${HOSTNAME%%.*}" "$d"'
-__sx_ps1() { case $PS1 in *'133;A'*) ;; *) PS1='\[\e]133;A\a\]'$PS1;; esac; case $PS1 in *'133;B'*) ;; *) PS1="$PS1\[\$($__sx_tc)\]\[\e]133;B\a\]";; esac; }
-__sx_title() { local s=$?; [ -n "$__sx_seen" ] && printf '\033]133;D;%s\a' "$s"; __sx_seen=1; __sx_ps1; return $s; }
-case ${PS0-} in *'133;C'*) ;; *) PS0=${PS0-}'\e]133;C\a';; esac
-case $PROMPT_COMMAND in *__sx_title*) ;; *) PROMPT_COMMAND="__sx_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
+fn terminal_block(title: bool, marks: bool) -> String {
+    if !title && !marks {
+        return String::new();
+    }
+    let mut out = String::new();
+    if title {
+        out.push_str(TITLE_COMMAND);
+    }
+    // The front of PS1 gets the A mark. Each piece is added once, so the hook can run before every
+    // prompt and also after `sx-theme` replaced PS1.
+    let front = if marks { r#"case $PS1 in *'133;A'*) ;; *) PS1='\[\e]133;A\a\]'$PS1;; esac; "# } else { "" };
+    // The end of PS1: the title, then the B mark.
+    let mut back = String::new();
+    if title {
+        back.push_str(r"\[\$($__sx_tc)\]");
+    }
+    if marks {
+        back.push_str(r"\[\e]133;B\a\]");
+    }
+    let seen = if marks { "133;B" } else { "__sx_tc" };
+    let tail = format!(r#"case $PS1 in *'{seen}'*) ;; *) PS1="$PS1{back}";; esac; "#);
+    out.push_str(&format!("__sx_ps1() {{ {front}{tail}}}\n"));
+    let d_mark = if marks { r#"[ -n "$__sx_seen" ] && printf '\033]133;D;%s\a' "$s"; "# } else { "" };
+    out.push_str(&format!("__sx_title() {{ local s=$?; {d_mark}__sx_seen=1; __sx_ps1; return $s; }}\n"));
+    if marks {
+        out.push_str(r"case ${PS0-} in *'133;C'*) ;; *) PS0=${PS0-}'\e]133;C\a';; esac");
+        out.push('\n');
+    }
+    out.push_str(r#"case $PROMPT_COMMAND in *__sx_title*) ;; *) PROMPT_COMMAND="__sx_title${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac"#);
+    out.push('\n');
+    out
+}
+
+/// Sets `__sx_tc`, the command that prints the window title: `[sx] user@host: dir`.
+const TITLE_COMMAND: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$HOME"}";; esac;printf "\033]0;[sx] %s@%s: %s\a" "${USER:-$(id -un)}" "${HOSTNAME%%.*}" "$d"'
 "##;
 
 /// Bash that defines `sx-theme`, which switches the prompt in a running session. `sx-theme` lists
@@ -417,7 +450,10 @@ fn build_rc_with(dir: &Path, cfg: &Config, profile: &str, extra: &[String]) -> S
         out.push_str("# --- sx-theme ---\n");
         out.push_str(&theme_switcher(dir));
     }
-    push_block(&mut out, "title", TITLE);
+    let terminal = terminal_block(p.title, p.marks);
+    if !terminal.is_empty() {
+        push_block(&mut out, "title", &terminal);
+    }
     if out.contains("# --- sx-theme ---") {
         push_block(&mut out, "theme from sx-sudo", RESTORE_THEME);
     }

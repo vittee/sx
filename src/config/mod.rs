@@ -26,13 +26,33 @@ use snippets::snippets_dir;
 pub const PROFILE_OFF: &str = "-";
 const DEFAULT_PROFILE: &str = "default";
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Profile {
     #[serde(default)]
     pub snippets: Vec<String>,
     /// Built-in prompt theme (see `prompt::THEMES`). `None` keeps the server's own prompt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// Sets the terminal's window title on the server. On unless the profile turns it off.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub title: bool,
+    /// Marks each prompt, command and output for the terminal (OSC 133). On unless turned off.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub marks: bool,
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        Profile { snippets: Vec::new(), prompt: None, title: true, marks: true }
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -423,7 +443,7 @@ pub fn ensure_initialized(dir: &Path) -> io::Result<(Config, bool)> {
     if cfg.profiles.is_empty() {
         cfg.profiles.insert(
             cfg.default_profile.clone(),
-            Profile { snippets: vec!["20-aliases".to_string()], prompt: Some(prompt::DEFAULT_THEME.to_string()) },
+            Profile { snippets: vec!["20-aliases".to_string()], prompt: Some(prompt::DEFAULT_THEME.to_string()), ..Profile::default() },
         );
         changed = true;
     }

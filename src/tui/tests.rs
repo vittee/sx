@@ -610,6 +610,44 @@ fn snippets_tab_has_no_prompt_gallery_any_more() {
 }
 
 #[test]
+fn the_terminal_switches_of_a_profile_toggle_with_keys_and_clicks_and_are_saved() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    let screen = squash(&render(&mut app));
+    assert!(screen.contains("[x] Window title") && screen.contains("[x] Prompt marks"), "{screen}");
+    assert!(app.cfg.profiles["default"].title && app.cfg.profiles["default"].marks);
+
+    let t = app.hits.prof_term;
+    click(&mut app, t.x + 1, t.y); // the title row
+    assert!(!app.cfg.profiles["default"].title && app.cfg.profiles["default"].marks);
+    assert!(squash(&render(&mut app)).contains("[ ] Window title"));
+    assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
+
+    click(&mut app, t.x + 1, t.y + 1); // the marks row
+    assert!(!app.cfg.profiles["default"].marks);
+    click(&mut app, t.x + 1, t.y);
+    click(&mut app, t.x + 1, t.y + 1);
+    assert!(app.cfg.profiles["default"].title && app.cfg.profiles["default"].marks);
+    assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
+}
+
+#[test]
+fn the_terminal_switches_belong_to_the_selected_profile() {
+    let (_t, mut app) = app();
+    app.cfg.profiles.insert("plain".into(), config::Profile::default());
+    app.switch_tab(Tab::Profiles);
+    render(&mut app);
+    let names = app.profile_names();
+    let plain = names.iter().position(|n| n == "plain").unwrap();
+    app.prof_state.select(Some(plain));
+    render(&mut app);
+    let t = app.hits.prof_term;
+    click(&mut app, t.x + 1, t.y);
+    assert!(!app.cfg.profiles["plain"].title);
+    assert!(app.cfg.profiles["default"].title, "the other profile is untouched");
+}
+
+#[test]
 fn profiles_toggle_snippets_with_keyboard_and_mouse() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
