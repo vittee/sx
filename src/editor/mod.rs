@@ -1,6 +1,6 @@
 //! Minimal multi-line text editor state for the snippet pane.
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Editor {
     pub lines: Vec<String>,
     /// Cursor position: line index and char index within the line.

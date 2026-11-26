@@ -37,6 +37,7 @@ enum TextDrag {
     Snippet,
     Search,
     Env,
+    Form,
 }
 
 /// The cursor move that a key makes in a text box. A box of one line has no move by rows.
@@ -68,6 +69,24 @@ fn select_key(e: &mut Editor, k: KeyEvent, multiline: bool) -> bool {
         }
         _ => false,
     }
+}
+
+/// The keys of a one-line text box, the same in all of them: the cursor moves, selecting, typing
+/// and deleting. True when the key was one of these.
+fn edit_key(e: &mut Editor, k: KeyEvent) -> bool {
+    if select_key(e, k, false) {
+        return true;
+    }
+    match k.code {
+        KeyCode::Backspace => e.backspace(),
+        KeyCode::Delete => e.delete(),
+        KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => e.insert_char(c),
+        code => match move_of(code, false) {
+            Some(mv) => e.go(mv),
+            None => return false,
+        },
+    }
+    true
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -433,10 +452,11 @@ impl App {
                 (v - start) as isize
             }
         };
-        if !matches!(self.mode, Mode::Normal) {
+        if !matches!(self.mode, Mode::Normal) && self.text_drag != Some(TextDrag::Form) {
             return false;
         }
         match self.text_drag {
+            Some(TextDrag::Form) => self.drag_form_text(x),
             Some(TextDrag::Snippet) => {
                 let a = self.hits.editor;
                 self.editor.drag(beyond(x, a.x, a.width), beyond(y, a.y, a.height));
@@ -525,6 +545,9 @@ impl App {
             Tab::Snippets => self.draw_snippets(f, body),
             Tab::Profiles => self.draw_profiles(f, body),
             Tab::Envs => self.draw_envs(f, body),
+        }
+        if let Mode::HostForm(form) = &mut self.mode {
+            form.keep_visible(hostedit::text_width(body.width));
         }
         match self.mode.clone() {
             Mode::HostSnippets(host) => self.draw_host_snippets(f, body, &host),

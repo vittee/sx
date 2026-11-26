@@ -19,6 +19,7 @@ const KEY_ROWS: usize = 5;
 const THIRD_ROW: [(&str, &str); 3] = [("^S", "save all"), ("^U", "clear field"), ("^K", "pick jump host")];
 const PICK_KEY: (&str, &str) = ("^K", "pick key file");
 const LABEL_W: usize = 16;
+const POPUP_W: u16 = 90;
 const DEFAULT: &str = "default";
 /// The colour of the options form, its picker, and the target of a host that has options.
 pub(super) const ACCENT: Color = Color::LightMagenta;
@@ -32,12 +33,12 @@ pub(super) struct HostForm {
     /// The options being edited: `None` is the default one.
     current: Option<String>,
     /// The fields of the options being edited. They go back into `default` or `options` on a switch.
-    values: [String; 5],
+    values: [Editor; 5],
     /// What `~/.ssh/config` says, shown dim in an empty field.
     hints: [String; 5],
     focus: usize,
     /// The name being typed for new options.
-    naming: Option<String>,
+    naming: Option<Editor>,
     /// What was saved when the form opened, to tell whether there is anything to lose.
     saved: (ConnOptions, BTreeMap<String, ConnOptions>),
     /// Asking whether to discard unsaved changes.
@@ -106,13 +107,25 @@ fn jump_candidates(hosts: &[HostEntry], cfg: &config::Config, this: &str) -> Vec
     others.into_iter().map(|h| h.alias.clone()).collect()
 }
 
-fn to_values(o: &ConnOptions) -> [String; 5] {
-    [o.user.clone(), o.port.clone(), o.identity.clone(), o.jump.clone(), o.args.clone()]
+/// A text box holding `text`, with the cursor at its end.
+fn text_box(text: &str) -> Editor {
+    let mut e = Editor::from_text(text);
+    e.end();
+    e
 }
 
-fn from_values(v: &[String; 5]) -> ConnOptions {
-    let [user, port, identity, jump, args] = v.each_ref().map(|s| s.trim().to_string());
+fn to_values(o: &ConnOptions) -> [Editor; 5] {
+    [&o.user, &o.port, &o.identity, &o.jump, &o.args].map(|s| text_box(s))
+}
+
+fn from_values(v: &[Editor; 5]) -> ConnOptions {
+    let [user, port, identity, jump, args] = v.each_ref().map(|e| e.lines[0].trim().to_string());
     ConnOptions { user, port, identity, jump, args }
+}
+
+/// The columns for the text of a field in a popup over a body `body_width` wide.
+pub(super) fn text_width(body_width: u16) -> usize {
+    body_width.min(POPUP_W).saturating_sub(2 + 1 + LABEL_W as u16) as usize
 }
 
 impl HostForm {
@@ -127,13 +140,13 @@ impl HostForm {
 
     /// The choices that fit what is typed in the focused field.
     fn key_matches(&self) -> Vec<&String> {
-        let typed = self.values[self.focus].trim().to_lowercase();
+        let typed = self.values[self.focus].lines[0].trim().to_lowercase();
         self.choices().iter().filter(|k| k.to_lowercase().contains(&typed)).collect()
     }
 
     /// Puts the chosen key or host into the focused field and closes the list.
     fn take_key(&mut self, key: &str) {
-        self.values[self.focus] = key.to_string();
+        self.values[self.focus] = text_box(key);
         self.key_pick = None;
     }
 
@@ -158,6 +171,13 @@ impl HostForm {
             keys,
             jumps,
             key_pick: None,
+        }
+    }
+
+    /// Scrolls the text of every field, and of the name being typed, so its cursor shows in `width` columns.
+    pub(super) fn keep_visible(&mut self, width: usize) {
+        for e in self.values.iter_mut().chain(self.naming.iter_mut()) {
+            e.keep_cursor_visible(width, 1);
         }
     }
 
@@ -253,6 +273,11 @@ impl HostForm {
             return false;
         }
         true
+    }
+
+    #[cfg(test)]
+    pub(super) fn field(&self, i: usize) -> &Editor {
+        &self.values[i]
     }
 
     /// The name of the options being edited, `None` for the default ones.
@@ -374,7 +399,8 @@ impl App {
             match k.code {
                 KeyCode::Esc => form.renaming = false,
                 KeyCode::Enter => {
-                    let done = if form.renaming { form.rename_options(&name) } else { form.add_options(&name) };
+                    let text = name.lines[0].clone();
+                    let done = if form.renaming { form.rename_options(&text) } else { form.add_options(&text) };
                     match done {
                         Ok(()) => form.renaming = false,
                         Err(msg) => {
@@ -383,15 +409,10 @@ impl App {
                         }
                     }
                 }
-                KeyCode::Backspace => {
-                    name.pop();
+                _ => {
+                    edit_key(&mut name, k);
                     form.naming = Some(name);
                 }
-                KeyCode::Char(c) if !ctrl => {
-                    name.push(c);
-                    form.naming = Some(name);
-                }
-                _ => form.naming = Some(name),
             }
             self.mode = Mode::HostForm(Box::new(form));
             return;
@@ -413,7 +434,7 @@ impl App {
                 return;
             }
         }
-        let (field, before) = (form.focus, form.values[form.focus].clone());
+        let (field, before) = (form.focus, form.values[form.focus].lines[0].clone());
         let n = LABELS.len();
         match k.code {
             KeyCode::Esc if form.want_close() => return,
@@ -439,7 +460,7 @@ impl App {
                 Ok(()) => return,
                 Err(msg) => self.fail(msg),
             },
-            KeyCode::Char('n') if ctrl => form.naming = Some(String::new()),
+            KeyCode::Char('n') if ctrl => form.naming = Some(text_box("")),
             KeyCode::Char('d') if ctrl => form.delete_options(),
             KeyCode::Char('k') if ctrl && matches!(form.focus, IDENTITY | JUMP) => {
                 let (none, no_match) = if form.focus == IDENTITY {
@@ -457,27 +478,24 @@ impl App {
             }
             KeyCode::Char('r') if ctrl => match form.current.clone() {
                 Some(name) => {
-                    form.naming = Some(name);
+                    form.naming = Some(text_box(&name));
                     form.renaming = true;
                 }
                 None => self.fail("the default options cannot be renamed".to_string()),
             },
-            KeyCode::Left => form.step_options(-1),
-            KeyCode::Right => form.step_options(1),
+            KeyCode::Left if ctrl => form.step_options(-1),
+            KeyCode::Right if ctrl => form.step_options(1),
             KeyCode::Tab | KeyCode::Down => form.focus = (form.focus + 1) % n,
             KeyCode::BackTab | KeyCode::Up => form.focus = (form.focus + n - 1) % n,
-            KeyCode::Backspace => {
-                form.values[form.focus].pop();
+            KeyCode::Char('u') if ctrl => form.values[form.focus] = text_box(""),
+            KeyCode::Char(c) if form.focus == PORT && !ctrl && !c.is_ascii_digit() => {}
+            _ => {
+                edit_key(&mut form.values[form.focus], k);
             }
-            KeyCode::Char('u') if ctrl => form.values[form.focus].clear(),
-            KeyCode::Char(c) if !ctrl && (form.focus != PORT || c.is_ascii_digit()) => {
-                form.values[form.focus].push(c);
-            }
-            _ => {}
         }
         if was_open {
             // Typing narrows the list and goes back to its first row. Any other key closes it.
-            let typed = matches!(k.code, KeyCode::Backspace | KeyCode::Char(_)) && form.values[field] != before;
+            let typed = matches!(k.code, KeyCode::Backspace | KeyCode::Delete | KeyCode::Char(_)) && form.values[field].lines[0] != before;
             form.key_pick = (typed && form.focus == field && !form.key_matches().is_empty()).then_some(0);
         }
         self.mode = Mode::HostForm(Box::new(form));
@@ -520,7 +538,7 @@ impl App {
     }
 
     pub(super) fn draw_host_form(&mut self, f: &mut Frame, body: Rect, form: &HostForm) {
-        let area = self.dragged_popup_area(body, 90, LABELS.len() as u16 + 7);
+        let area = self.dragged_popup_area(body, POPUP_W, LABELS.len() as u16 + 7);
         f.render_widget(ratatui::widgets::Clear, area);
         let block = Block::bordered()
             .title(format!(" {}: connection options{} ", form.host, if form.is_dirty() { " (unsaved)" } else { "" }))
@@ -530,7 +548,7 @@ impl App {
 
         let dim = Style::new().add_modifier(Modifier::DIM);
         let accent = Style::new().fg(ACCENT);
-        let cursor = Span::styled("▏", accent);
+        let mut cursor = None;
 
         // The options row: every name, the one being edited highlighted.
         let mut options_tabs = Vec::new();
@@ -538,8 +556,8 @@ impl App {
         let mut options_row = vec![Span::styled(format!(" {:<LABEL_W$}", "Options Name"), dim)];
         if let Some(name) = &form.naming {
             options_row = vec![Span::styled(format!(" {:<LABEL_W$}", if form.renaming { "Rename to" } else { "New options" }), accent.add_modifier(Modifier::BOLD))];
-            options_row.push(Span::raw(name.clone()));
-            options_row.push(cursor.clone());
+            options_row.extend(field_spans(name));
+            cursor = Some((inner.x + 1 + LABEL_W as u16 + (name.col - name.left) as u16, inner.y));
         } else {
             let names = form.names();
             let labels: Vec<String> = names.iter().map(|n| n.clone().unwrap_or_else(|| DEFAULT.to_string())).collect();
@@ -549,7 +567,7 @@ impl App {
             let (first, last) = names_window(&widths, at, avail);
             let mut x = inner.x + 1 + LABEL_W as u16;
             if first > 0 {
-                arrows.push((Rect::new(x, inner.y, 1, 1), KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)));
+                arrows.push((Rect::new(x, inner.y, 1, 1), KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL)));
                 options_row.push(Span::styled("‹ ", accent.add_modifier(Modifier::BOLD)));
                 x += 2;
             }
@@ -561,30 +579,27 @@ impl App {
                 options_row.push(Span::raw(" "));
             }
             if last + 1 < names.len() {
-                arrows.push((Rect::new(x, inner.y, 1, 1), KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)));
+                arrows.push((Rect::new(x, inner.y, 1, 1), KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL)));
                 options_row.push(Span::styled("›", accent.add_modifier(Modifier::BOLD)));
             }
         }
 
         let mut lines = vec![Line::from(options_row)];
-        lines.extend(LABELS.iter().enumerate().map(|(i, label)| {
+        for (i, label) in LABELS.iter().enumerate() {
             let focused = i == form.focus && form.naming.is_none();
             let label_style = if focused { accent.add_modifier(Modifier::BOLD) } else { Style::new() };
             let mut spans = vec![Span::styled(format!(" {label:<LABEL_W$}"), label_style)];
             let value = &form.values[i];
-            if value.is_empty() {
-                if focused {
-                    spans.push(cursor.clone());
-                }
+            if value.lines[0].is_empty() {
                 spans.push(Span::styled(form.hints[i].clone(), dim));
             } else {
-                spans.push(Span::raw(value.clone()));
-                if focused {
-                    spans.push(cursor.clone());
-                }
+                spans.extend(field_spans(value));
             }
-            Line::from(spans)
-        }));
+            if focused && !form.confirming {
+                cursor = Some((inner.x + 1 + LABEL_W as u16 + (value.col - value.left) as u16, inner.y + 1 + i as u16));
+            }
+            lines.push(Line::from(spans));
+        }
         lines.push(Line::raw(""));
         let keys: [&[(&str, &str)]; 3] = if form.confirming {
             [&[("y", "discard the changes"), ("n", "keep editing"), ("^S", "save")], &[], &[]]
@@ -599,7 +614,7 @@ impl App {
             };
             [
                 &[("Enter", "connect once"), ("Esc", "cancel"), ("Tab", "next field")],
-                &[("←/→", "switch"), ("^N", "new"), ("^R", "rename"), ("^D", "delete")],
+                &[("^←/→", "switch"), ("^N", "new"), ("^R", "rename"), ("^D", "delete")],
                 third,
             ]
         };
@@ -636,6 +651,9 @@ impl App {
         key_hits.extend(arrows);
         self.hits.form_keys = key_hits;
         f.render_widget(Paragraph::new(lines), inner);
+        if let Some(at) = cursor.filter(|_| !form.confirming) {
+            f.set_cursor_position(at);
+        }
 
         // The pick list drops down under the focused field, over the rows below it.
         self.hits.form_keylist.clear();
@@ -693,6 +711,16 @@ impl App {
     }
 }
 
+/// The text of a one-line field as spans, scrolled by the editor and with the selection in reverse.
+fn field_spans(e: &Editor) -> Vec<Span<'static>> {
+    let text: String = e.lines[0].chars().skip(e.left).collect();
+    let line = Line::from(vec![Span::raw(text)]);
+    match e.selected_cols(0) {
+        Some((from, to)) => super::snippets::reversed_range(line, from.saturating_sub(e.left), to.saturating_sub(e.left)).spans,
+        None => line.spans,
+    }
+}
+
 /// The names that fit in `avail` columns around the current one, as `(first, last)` indexes.
 /// Names that are left out are marked with `‹` and `›`, which take two columns each.
 fn names_window(widths: &[u16], at: usize, avail: u16) -> (usize, usize) {
@@ -723,7 +751,7 @@ fn hint_key(label: &str) -> KeyEvent {
     let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
     match label {
         "Tab" => plain(KeyCode::Tab),
-        "←/→" => plain(KeyCode::Right),
+        "^←/→" => KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL),
         "Enter" => plain(KeyCode::Enter),
         "Esc" => plain(KeyCode::Esc),
         "y" | "n" => plain(KeyCode::Char(label.chars().next().unwrap_or(' '))),
@@ -769,6 +797,9 @@ impl App {
                 form.switch_to(name.clone());
             } else if inside(self.hits.form_fields, x, y) {
                 form.focus = (y - self.hits.form_fields.y) as usize;
+                let text_x = self.hits.form_fields.x + 1 + LABEL_W as u16;
+                form.values[form.focus].click(x.saturating_sub(text_x) as usize, 0);
+                self.text_drag = Some(TextDrag::Form);
             }
         }
         self.mode = Mode::HostForm(Box::new(form));
@@ -795,6 +826,17 @@ impl App {
 }
 
 impl App {
+    /// Selects in the focused field of the options form while the mouse drags.
+    pub(super) fn drag_form_text(&mut self, x: u16) {
+        let fields = self.hits.form_fields;
+        let start = fields.x + 1 + LABEL_W as u16;
+        let len = fields.width.saturating_sub(1 + LABEL_W as u16);
+        let dx = if x < start { -1 } else if x >= start.saturating_add(len) { len as isize } else { (x - start) as isize };
+        if let Mode::HostForm(form) = &mut self.mode {
+            form.values[form.focus].drag(dx, 0);
+        }
+    }
+
     /// Dragging the title bar of the options popup, the picker or the extras popup moves it. True when the event was part of that.
     pub(super) fn drag_options_popup(&mut self, m: &MouseEvent) -> bool {
         let area = match self.mode {
@@ -828,14 +870,14 @@ impl App {
 impl App {
     pub(super) fn identity_value(&self) -> Option<String> {
         match &self.mode {
-            Mode::HostForm(form) => Some(form.values[IDENTITY].clone()),
+            Mode::HostForm(form) => Some(form.values[IDENTITY].lines[0].clone()),
             _ => None,
         }
     }
 
     pub(super) fn jump_value(&self) -> Option<String> {
         match &self.mode {
-            Mode::HostForm(form) => Some(form.values[JUMP].clone()),
+            Mode::HostForm(form) => Some(form.values[JUMP].lines[0].clone()),
             _ => None,
         }
     }

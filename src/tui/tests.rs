@@ -463,6 +463,15 @@ fn clicking_in_editor_focuses_and_places_cursor() {
     assert_eq!((app.editor.row, app.editor.col), (1, 4));
 }
 
+fn ctrl_code(app: &mut App, code: KeyCode) {
+    app.on_event(Event::Key(KeyEvent {
+        code,
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    }));
+}
+
 fn shift(app: &mut App, code: KeyCode) {
     app.on_event(Event::Key(KeyEvent {
         code,
@@ -586,6 +595,88 @@ fn an_environment_text_row_selects_and_typing_replaces() {
     ctrl(&mut app, 'a');
     typed(&mut app, "Q");
     assert_eq!(app.cfg.envs["qa"].label, "Q", "a selection makes room for the typed character");
+}
+
+fn form_text(app: &App, i: usize) -> String {
+    match &app.mode {
+        Mode::HostForm(form) => form.field(i).lines[0].clone(),
+        _ => panic!("the options form is not open"),
+    }
+}
+
+#[test]
+fn the_options_form_edits_text_like_the_other_boxes() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    key(&mut app, KeyCode::Backspace); // the user field holds `me`
+    key(&mut app, KeyCode::Backspace);
+    typed(&mut app, "root");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    typed(&mut app, "X");
+    assert_eq!(form_text(&app, 0), "roXot", "the cursor moves inside the text");
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Delete);
+    assert_eq!(form_text(&app, 0), "oXot");
+    key(&mut app, KeyCode::End);
+    shift(&mut app, KeyCode::Left);
+    shift(&mut app, KeyCode::Left);
+    typed(&mut app, "ab");
+    assert_eq!(form_text(&app, 0), "oXab", "typing replaces the selection");
+    ctrl(&mut app, 'a');
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(form_text(&app, 0), "");
+}
+
+#[test]
+fn the_options_form_port_takes_digits_only_and_ctrl_arrows_switch_the_options() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    new_options(&mut app, "other");
+    assert_eq!(app.current_options_name().as_deref(), Some("other"));
+    ctrl_code(&mut app, KeyCode::Left);
+    assert_eq!(app.current_options_name(), None, "Ctrl-Left switches the options");
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "2a2b");
+    assert_eq!(form_text(&app, 1), "22");
+    key(&mut app, KeyCode::Left);
+    assert_eq!(app.current_options_name(), None, "Left only moves the cursor");
+}
+
+#[test]
+fn clicking_and_dragging_in_an_options_field_place_the_cursor_and_select() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    render(&mut app);
+    let fields = app.hits.form_fields;
+    let text_x = fields.x + 1 + 16;
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Tab); // identity file
+    ctrl(&mut app, 'a');
+    typed(&mut app, "abcdef");
+    render(&mut app);
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), text_x + 1, fields.y + 2);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), text_x + 4, fields.y + 5);
+    match &app.mode {
+        Mode::HostForm(form) => assert_eq!(form.field(2).selection(), Some(((0, 1), (0, 4)))),
+        _ => panic!("the form closed"),
+    }
+    mouse(&mut app, MouseEventKind::Up(MouseButton::Left), text_x + 4, fields.y + 2);
+    typed(&mut app, "Z");
+    assert_eq!(form_text(&app, 2), "aZef");
+}
+
+#[test]
+fn the_name_of_new_options_is_edited_like_other_text() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    ctrl(&mut app, 'n');
+    typed(&mut app, "abc");
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Backspace);
+    typed(&mut app, "X");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(app.current_options_name().as_deref(), Some("aXc"));
 }
 
 #[test]
@@ -1826,7 +1917,7 @@ fn connecting_with_edited_saved_options_does_not_change_them() {
         config::ConnOptions { user: "root".into(), ..Default::default() },
     );
     ctrl(&mut app, 'o');
-    key(&mut app, KeyCode::Right);
+    ctrl_code(&mut app, KeyCode::Right);
     key(&mut app, KeyCode::Tab);
     typed(&mut app, "2200");
     key(&mut app, KeyCode::Enter);
@@ -2040,7 +2131,7 @@ fn many_option_names_scroll_around_the_current_one() {
 
     // Stepping left keeps the current name in view and brings in the ones at the other side.
     for _ in 0..11 {
-        key(&mut app, KeyCode::Left);
+        ctrl_code(&mut app, KeyCode::Left);
         let screen = render(&mut app);
         let cur = app.hits.form_options.iter().any(|(_, n)| *n == app.current_options_name());
         assert!(cur, "the current name is not shown: {screen}");

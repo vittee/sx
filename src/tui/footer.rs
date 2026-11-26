@@ -61,7 +61,7 @@ impl App {
             (Mode::HostForm(form), _) if form.is_naming() => &[("Enter", "add"), ("Esc", "cancel")],
             (Mode::HostForm(_), _) => &[
                 ("Tab", "next field"),
-                ("←/→", "options"),
+                ("^←/→", "options"),
                 ("^N", "new options"),
                 ("^D", "delete options"),
                 ("^S", "save"),
