@@ -19,7 +19,7 @@ use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Scrollbar, S
 use ratatui::{DefaultTerminal, Frame};
 
 use crate::config::{self, Config, SortKey};
-use crate::editor::Editor;
+use crate::editor::{Editor, Move};
 use crate::highlight;
 use crate::history;
 use crate::log;
@@ -30,6 +30,45 @@ use crate::ssh_config::{self, HostEntry, Source};
 
 const TAB_TITLES: [&str; 4] = ["Hosts", "Snippets", "Profiles", "Envs"];
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+
+/// The text boxes that a mouse drag can select in.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TextDrag {
+    Snippet,
+    Search,
+    Env,
+}
+
+/// The cursor move that a key makes in a text box. A box of one line has no move by rows.
+fn move_of(code: KeyCode, multiline: bool) -> Option<Move> {
+    Some(match code {
+        KeyCode::Left => Move::Left,
+        KeyCode::Right => Move::Right,
+        KeyCode::Home => Move::Home,
+        KeyCode::End => Move::End,
+        KeyCode::Up if multiline => Move::Rows(-1),
+        KeyCode::Down if multiline => Move::Rows(1),
+        KeyCode::PageUp if multiline => Move::Rows(-10),
+        KeyCode::PageDown if multiline => Move::Rows(10),
+        _ => return None,
+    })
+}
+
+/// Selecting in a text box, the same in all of them: `Shift` with a move key extends the selection
+/// and `Ctrl-A` selects all. True when the key was one of these.
+fn select_key(e: &mut Editor, k: KeyEvent, multiline: bool) -> bool {
+    if k.code == KeyCode::Char('a') && k.modifiers.contains(KeyModifiers::CONTROL) {
+        e.select_all();
+        return true;
+    }
+    match move_of(k.code, multiline) {
+        Some(mv) if k.modifiers.contains(KeyModifiers::SHIFT) => {
+            e.extend(mv);
+            true
+        }
+        _ => false,
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Tab {
@@ -178,6 +217,8 @@ pub struct App {
     /// How far the options popup or the picker was dragged from the centre, and where a drag last was.
     popup_offset: (i32, i32),
     popup_drag: Option<(u16, u16)>,
+    /// The text box that a drag of the mouse is selecting in, from the click that started it.
+    text_drag: Option<TextDrag>,
     /// Where the private keys offered for the identity file are looked up (`~/.ssh`).
     ssh_dir: Option<PathBuf>,
 }
@@ -234,6 +275,7 @@ impl App {
             pending_connect: None,
             popup_offset: (0, 0),
             popup_drag: None,
+            text_drag: None,
             ssh_dir: config::home_dir().map(|h| h.join(".ssh")),
         };
         // Hosts used before but missing from ssh config/known_hosts still show up.
@@ -288,6 +330,7 @@ impl App {
         self.flush_editor();
         self.editor_focus = false;
         self.prof_focus = ProfFocus::List;
+        self.prompt_cursor = None;
         self.env_focus = envs::EnvFocus::List;
         self.tab = tab;
     }
@@ -378,8 +421,44 @@ impl App {
         }
     }
 
+    /// Selects with the mouse in the box that the drag started in. True when a drag was handled.
+    fn drag_text(&mut self, x: u16, y: u16) -> bool {
+        // A position outside the text counts as one column or line beyond its nearest edge.
+        let beyond = |v: u16, start: u16, len: u16| -> isize {
+            if v < start {
+                -1
+            } else if v >= start.saturating_add(len) {
+                len as isize
+            } else {
+                (v - start) as isize
+            }
+        };
+        if !matches!(self.mode, Mode::Normal) {
+            return false;
+        }
+        match self.text_drag {
+            Some(TextDrag::Snippet) => {
+                let a = self.hits.editor;
+                self.editor.drag(beyond(x, a.x, a.width), beyond(y, a.y, a.height));
+            }
+            Some(TextDrag::Search) => {
+                let a = self.hits.search;
+                self.filter.drag(beyond(x, a.x + 3, a.width.saturating_sub(3)), 0);
+            }
+            Some(TextDrag::Env) => {
+                let a = self.hits.env_fields;
+                self.env_buf.drag(beyond(x, a.x + envs::NAME_WIDTH, a.width.saturating_sub(envs::NAME_WIDTH)), 0);
+            }
+            None => return false,
+        }
+        true
+    }
+
     fn on_mouse(&mut self, m: MouseEvent) {
         let (x, y) = (m.column, m.row);
+        if matches!(m.kind, MouseEventKind::Up(MouseButton::Left)) {
+            self.text_drag = None;
+        }
         let flip = if self.cfg.invert_scroll { -1 } else { 1 };
         let wheel = match m.kind {
             MouseEventKind::ScrollUp => Some(-flip),
@@ -390,6 +469,12 @@ impl App {
             return;
         }
         let click = matches!(m.kind, MouseEventKind::Down(MouseButton::Left));
+        if click {
+            self.text_drag = None;
+        }
+        if matches!(m.kind, MouseEventKind::Drag(MouseButton::Left)) && self.drag_text(x, y) {
+            return;
+        }
         if !click && wheel.is_none() {
             return;
         }

@@ -463,6 +463,131 @@ fn clicking_in_editor_focuses_and_places_cursor() {
     assert_eq!((app.editor.row, app.editor.col), (1, 4));
 }
 
+fn shift(app: &mut App, code: KeyCode) {
+    app.on_event(Event::Key(KeyEvent {
+        code,
+        modifiers: KeyModifiers::SHIFT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    }));
+}
+
+#[test]
+fn shift_arrows_select_in_the_editor_and_typing_replaces_the_selection() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Snippets);
+    render(&mut app);
+    key(&mut app, KeyCode::Enter);
+    app.editor = crate::editor::Editor::from_text("hello world");
+    for _ in 0..5 {
+        shift(&mut app, KeyCode::Right);
+    }
+    assert_eq!(app.editor.selection(), Some(((0, 0), (0, 5))));
+    typed(&mut app, "bye");
+    assert_eq!(app.editor.lines[0], "bye world");
+    shift(&mut app, KeyCode::End);
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.editor.lines[0], "bye");
+}
+
+#[test]
+fn ctrl_a_selects_everything_and_it_shows_in_reverse() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Snippets);
+    render(&mut app);
+    key(&mut app, KeyCode::Enter);
+    app.editor = crate::editor::Editor::from_text("abc
+def");
+    ctrl(&mut app, 'a');
+    let ed = app.hits.editor;
+    let backend = ratatui::backend::TestBackend::new(110, 30);
+    let mut term = ratatui::Terminal::new(backend).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    let buf = term.backend().buffer();
+    let reversed = |x: u16, y: u16| buf[(x, y)].modifier.contains(Modifier::REVERSED);
+    assert!(reversed(ed.x, ed.y) && reversed(ed.x + 2, ed.y), "first line selected");
+    assert!(reversed(ed.x + 2, ed.y + 1), "second line selected");
+    assert!(!reversed(ed.x + 3, ed.y + 1), "text after the selection");
+    key(&mut app, KeyCode::Left);
+    term.draw(|f| app.draw(f)).unwrap();
+    assert!(!term.backend().buffer()[(ed.x, ed.y)].modifier.contains(Modifier::REVERSED));
+}
+
+#[test]
+fn dragging_in_the_editor_selects_text() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Snippets);
+    render(&mut app);
+    key(&mut app, KeyCode::Enter);
+    app.editor = crate::editor::Editor::from_text("abcdef
+ghijkl");
+    render(&mut app);
+    let ed = app.hits.editor;
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), ed.x + 1, ed.y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), ed.x + 3, ed.y + 1);
+    assert_eq!(app.editor.selection(), Some(((0, 1), (1, 3))));
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), ed.x + 200, ed.y + 100);
+    assert_eq!(app.editor.selection(), Some(((0, 1), (1, 6))));
+}
+
+#[test]
+fn the_search_box_selects_like_the_editor() {
+    let (_t, mut app) = app();
+    typed(&mut app, "web-prod");
+    for _ in 0..4 {
+        shift(&mut app, KeyCode::Left);
+    }
+    assert_eq!(app.filter.selection(), Some(((0, 4), (0, 8))));
+    typed(&mut app, "x");
+    assert_eq!(app.filter_text(), "web-x");
+    ctrl(&mut app, 'a');
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.filter_text(), "");
+    typed(&mut app, "abc");
+    shift(&mut app, KeyCode::Home);
+    assert_eq!(app.filter.selection(), Some(((0, 0), (0, 3))));
+    key(&mut app, KeyCode::Left);
+    assert_eq!(app.filter.selection(), None);
+}
+
+#[test]
+fn dragging_in_the_search_box_selects_its_text() {
+    let (_t, mut app) = app();
+    typed(&mut app, "abcdef");
+    render(&mut app);
+    let s = app.hits.search;
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), s.x + 3 + 1, s.y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), s.x + 3 + 4, s.y + 5);
+    assert_eq!(app.filter.selection(), Some(((0, 1), (0, 4))));
+    mouse(&mut app, MouseEventKind::Up(MouseButton::Left), s.x + 3 + 4, s.y);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), s.x + 3 + 5, s.y);
+    assert_eq!(app.filter.selection(), Some(((0, 1), (0, 4))), "a drag that did not start in the box does nothing");
+}
+
+#[test]
+fn an_environment_text_row_selects_and_typing_replaces() {
+    let (_t, mut app) = app();
+    open_envs(&mut app);
+    ctrl(&mut app, 'n');
+    typed(&mut app, "qa");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter);
+    typed(&mut app, "Quality");
+    for _ in 0..3 {
+        shift(&mut app, KeyCode::Left);
+    }
+    typed(&mut app, "ty");
+    assert_eq!(app.cfg.envs["qa"].label, "Qualty");
+    ctrl(&mut app, 'a');
+    typed(&mut app, "Z");
+    assert_eq!(app.cfg.envs["qa"].label, "Z");
+    typed(&mut app, "abcdefghijklmnopqrstuvwxyz");
+    assert_eq!(app.cfg.envs["qa"].label.chars().count(), config::MAX_LABEL);
+    ctrl(&mut app, 'a');
+    typed(&mut app, "Q");
+    assert_eq!(app.cfg.envs["qa"].label, "Q", "a selection makes room for the typed character");
+}
+
 #[test]
 fn new_snippet_flow_and_validation() {
     let (_t, mut app) = app();

@@ -391,6 +391,9 @@ impl App {
         if self.global_nav(k) {
             return;
         }
+        if select_key(&mut self.filter, k, false) {
+            return;
+        }
         let len = self.visible().len();
         match k.code {
             KeyCode::Up => Self::move_sel(&mut self.host_state, len, -1),
@@ -443,6 +446,7 @@ impl App {
         if click && inside(self.hits.search, x, y) {
             // the text starts after the ` > ` prompt
             self.filter.click(x.saturating_sub(self.hits.search.x + 3) as usize, 0);
+            self.text_drag = Some(TextDrag::Search);
             return;
         }
         if click && inside(head, x, y) {
@@ -531,7 +535,12 @@ impl App {
         let kinds = highlight::highlight_search(self.filter_text());
         let width = search_a.width.saturating_sub(5) as usize;
         let mut spans = vec![Span::styled(" > ", Style::new().fg(Color::Cyan))];
-        spans.extend(super::snippets::highlighted_line(self.filter_text(), &kinds, self.filter.left, width).spans);
+        let mut line = super::snippets::highlighted_line(self.filter_text(), &kinds, self.filter.left, width);
+        if let Some((from, to)) = self.filter.selected_cols(0) {
+            let left = self.filter.left;
+            line = super::snippets::reversed_range(line, from.saturating_sub(left), to.saturating_sub(left));
+        }
+        spans.extend(line.spans);
         let search = Paragraph::new(Line::from(spans))
         .block(Block::bordered().title(match self.filter_parts().0 {
             Some(user) => format!(" Search ({} hosts, connect as {user}) ", vis.len()),

@@ -16,7 +16,7 @@ const FIELDS: [&str; 8] =
     ["label", "color", "host patterns", "badge", "title", "confirm", "guard", "guarded commands"];
 
 /// Width of the name column of a form row, with its leading space. The checkbox follows it.
-const NAME_WIDTH: u16 = 18;
+pub(super) const NAME_WIDTH: u16 = 18;
 
 /// Whether a row of the form is typed into, not switched.
 fn is_text(field: usize) -> bool {
@@ -219,6 +219,9 @@ impl App {
 
     fn on_key_env_fields(&mut self, k: KeyEvent) {
         let text = is_text(self.env_field);
+        if text && select_key(&mut self.env_buf, k, false) {
+            return;
+        }
         match k.code {
             KeyCode::Esc => self.env_focus = EnvFocus::List,
             KeyCode::Left if !text => self.env_focus = EnvFocus::List,
@@ -230,7 +233,8 @@ impl App {
             KeyCode::Home if text => self.env_buf.home(),
             KeyCode::End if text => self.env_buf.end(),
             KeyCode::Char(c) if text && !k.modifiers.contains(KeyModifiers::CONTROL) => {
-                if self.env_field == 0 && self.env_text().chars().count() >= config::MAX_LABEL {
+                let selected = self.env_buf.selected_cols(0).map_or(0, |(from, to)| to - from);
+                if self.env_field == 0 && self.env_text().chars().count() - selected >= config::MAX_LABEL {
                     return;
                 }
                 self.env_buf.insert_char(c);
@@ -275,6 +279,7 @@ impl App {
                 self.focus_env_field(field);
                 if is_text(field) {
                     self.env_buf.click(x.saturating_sub(fields.x + NAME_WIDTH) as usize, 0);
+                    self.text_drag = Some(TextDrag::Env);
                 }
                 // only the checkbox switches, a click on its text just focuses the row
                 if !is_text(field) && (NAME_WIDTH..NAME_WIDTH + 3).contains(&(x - fields.x)) {
@@ -351,6 +356,10 @@ impl App {
                         }
                     };
                     let mut spans = vec![Span::raw(text)];
+                    if at && let Some((from, to)) = self.env_buf.selected_cols(0) {
+                        let left = self.env_buf.left;
+                        spans = super::snippets::reversed_range(Line::from(spans), from.saturating_sub(left), to.saturating_sub(left)).spans;
+                    }
                     if !at && i == 0 && env.label.is_empty() {
                         spans.push(Span::styled("(the name in capitals)", dim));
                     } else if !at && i == 7 && env.guard.is_empty() {

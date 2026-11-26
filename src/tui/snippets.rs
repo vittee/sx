@@ -36,6 +36,27 @@ pub(super) fn highlighted_line(text: &str, kinds: &[highlight::Kind], left: usiz
     Line::from(spans)
 }
 
+/// The characters `from..to` of a line shown in reverse video, for a selection.
+pub(super) fn reversed_range(line: Line<'static>, from: usize, to: usize) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut at = 0;
+    for span in line.spans {
+        let text: Vec<char> = span.content.chars().collect();
+        let len = text.len();
+        let (a, b) = (from.clamp(at, at + len) - at, to.clamp(at, at + len) - at);
+        let part = |r: std::ops::Range<usize>| text[r].iter().collect::<String>();
+        for (range, selected) in [(0..a, false), (a..b, true), (b..len, false)] {
+            if range.is_empty() {
+                continue;
+            }
+            let style = if selected { span.style.add_modifier(Modifier::REVERSED) } else { span.style };
+            spans.push(Span::styled(part(range), style));
+        }
+        at += len;
+    }
+    Line::from(spans)
+}
+
 /// Color of a snippet name by its kind: shell green, vim cyan, tmux yellow, inputrc light blue, prompt
 /// magenta.
 pub(super) fn kind_color(name: &str) -> Color {
@@ -184,26 +205,25 @@ impl App {
 
     pub(super) fn on_key_editor(&mut self, k: KeyEvent, ctrl: bool) {
         let e = &mut self.editor;
+        if select_key(e, k, true) {
+            return;
+        }
         match k.code {
+            KeyCode::Char('s') if ctrl => self.flush_editor(),
             KeyCode::Esc => {
                 self.editor_focus = false;
                 self.flush_editor();
             }
-            KeyCode::Char('s') if ctrl => self.flush_editor(),
             KeyCode::Char(c) if !ctrl => e.insert_char(c),
             KeyCode::Enter => e.newline(),
             KeyCode::Tab => e.insert_str("  "),
             KeyCode::Backspace => e.backspace(),
             KeyCode::Delete => e.delete(),
-            KeyCode::Left => e.left(),
-            KeyCode::Right => e.right(),
-            KeyCode::Up => e.move_rows(-1),
-            KeyCode::Down => e.move_rows(1),
-            KeyCode::PageUp => e.move_rows(-10),
-            KeyCode::PageDown => e.move_rows(10),
-            KeyCode::Home => e.home(),
-            KeyCode::End => e.end(),
-            _ => {}
+            _ => {
+                if let Some(mv) = move_of(k.code, true) {
+                    e.go(mv);
+                }
+            }
         }
     }
 
@@ -234,6 +254,7 @@ impl App {
         } else if inside(ed, x, y) && self.editor_name.is_some() {
             self.editor_focus = true;
             self.editor.click((x - ed.x) as usize, (y - ed.y) as usize);
+            self.text_drag = Some(TextDrag::Snippet);
         }
     }
 
@@ -302,9 +323,16 @@ impl App {
             .lines
             .iter()
             .zip(&kinds)
+            .enumerate()
             .skip(self.editor.top)
             .take(ed_inner.height as usize)
-            .map(|(l, k)| highlighted_line(l, k, left, width))
+            .map(|(row, (l, k))| {
+                let line = highlighted_line(l, k, left, width);
+                match self.editor.selected_cols(row) {
+                    Some((from, to)) => reversed_range(line, from.saturating_sub(left), to.saturating_sub(left)),
+                    None => line,
+                }
+            })
             .collect();
         f.render_widget(Paragraph::new(lines), ed_inner);
         let bar_a = Rect { x: ed_a.x, width: ed_a.width, ..ed_inner };
