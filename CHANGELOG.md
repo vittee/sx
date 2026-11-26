@@ -1,5 +1,61 @@
 # Changelog
 
+## v0.5.0 - 2026-11-27
+
+### Features
+
+- Let a profile turn the terminal window title and prompt marks off
+- Add front matter to snippets and show its description on Profiles
+- Give the presets front matter with a version and replace older ones on init --presets
+- Leave out snippets of the profile for one host in the Extras popup and let it be dragged
+- Edit the Hosts search box with the shared editor and mark the matches in the list
+- Tag hosts with an environment that shows a colored badge and title and can ask before connecting
+- Ask before running guarded commands on a host of an environment
+- Show the server, guarded commands and payload size in sx-info, in a new order and in color
+- Add sx-zsh, which starts zsh with your prompt translated from bash
+- Color the question that the guard asks
+- Port the oh-my-posh themes and say in the preview when a theme needs a Nerd Font or truecolor
+- Choose per profile the themes that sx-theme offers on the server
+- Let a prompt snippet say in its front matter that it needs a Nerd Font
+- Select text in the snippet editor, the host search and the environment rows
+- Edit the connection options with the shared editor and switch options with Ctrl-Left and Ctrl-Right
+- Undo and redo in every text box with Ctrl-Z and Ctrl-Y
+- Ask what to do with unsaved changes when leaving the snippet editor
+- Make the questions modal and blink them on a click
+- Hide a status message after a few seconds
+
+### Fixes
+
+- Show (y/N) in the delete prompt
+- Show the payload size in its own box on the Profiles page
+- Ignore the wheel over an unfocused Prompt pane and open a prompt snippet on double click
+- Block Ctrl-C at the unsaved-changes question
+
+### Refactoring
+
+- Raise the payload size warning to 28 KB
+
+### Documentation
+
+- Re-record the demo, add the Envs page and show the badge in the screenshots
+- Describe environments in the feature list, the Envs page and the layout
+- Note the server bash, the no-write rule and the demo tape in AGENT.md
+- Add the licenses of the code that the themes come from
+- Rewrite the introduction, install, usage and how it works
+- Rewrite the TUI section
+- Rewrite the configuration and snippet kinds sections
+- Add the front matter section and rewrite the prompt themes and snippet presets
+- Rewrite the commands on the server
+- Rewrite the environments section
+- Rewrite the terminal integration, limitations, build and license sections
+- Describe how to write the guard rules
+- Note the shared editor, the modal questions and the status timeout in AGENT.md
+- Note the README style in AGENT.md
+- Say that Ctrl-Left and Ctrl-Right switch the named options in the options form
+- Say that Esc in the snippet editor asks about unsaved changes
+- Re-record the demo and the screenshots
+
+
 ## v0.4.0 - 2026-11-23
 
 ### Features
