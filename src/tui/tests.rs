@@ -682,13 +682,13 @@ fn arrow_keys_choose_and_save_a_prompt() {
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(next));
     assert!(render(&mut app).contains(&format!("(•) {next}")));
     assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
-    for _ in 0..20 {
+    for _ in 0..prompt::THEMES.len() + 2 {
         key(&mut app, KeyCode::Down); // stops at the last theme
     }
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(next));
     key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::THEMES.last().unwrap().0));
-    for _ in 0..20 {
+    for _ in 0..prompt::THEMES.len() + 2 {
         key(&mut app, KeyCode::Up); // stops at "(server's own)"
     }
     assert!(render(&mut app).contains("the server keeps its own prompt"), "the preview follows the cursor");
@@ -2637,3 +2637,18 @@ fn the_cursor_moves_in_a_text_row_of_the_environment_form() {
     key(&mut app, KeyCode::Char('Z'));
     assert!(app.cfg.envs["qa"].label.contains('Z'), "{}", app.cfg.envs["qa"].label);
 }
+
+#[test]
+fn the_preview_says_when_a_theme_needs_a_nerd_font() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right); // focus the prompt picker
+    assert!(!squash(&render(&mut app)).contains("Requires Nerd Font"), "fino draws no symbols");
+    for _ in 0..prompt::THEMES.len() {
+        key(&mut app, KeyCode::Down); // the last theme is a powerline one
+    }
+    let screen = render(&mut app);
+    assert!(screen.contains("Requires Nerd Font"), "{screen}");
+    assert!(screen.contains("https://github.com/ryanoasis/nerd-fonts#patched-fonts"), "the link is whole at 110 columns: {screen}");
+}
+

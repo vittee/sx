@@ -5,6 +5,10 @@ use super::*;
 /// Added to a prompt row to tell its clicks from those on the snippet grid.
 const PROMPT_ROW_BASE: usize = 1 << 20;
 
+/// What the preview says about a theme that draws symbols, and where to get a font that has them.
+const NERD_FONT_NOTE: &str = "Requires Nerd Font";
+const NERD_FONT_URL: &str = "https://github.com/ryanoasis/nerd-fonts#patched-fonts";
+
 impl App {
     pub(super) fn profile_names(&self) -> Vec<String> {
         self.cfg.profiles.keys().cloned().collect()
@@ -463,7 +467,7 @@ impl App {
         let focused = self.prof_focus == ProfFocus::Prompt;
         let border = if focused { Color::Cyan } else { Color::Reset };
         // Two sibling panes: the theme list, and the preview next to it.
-        let [pick_a, prev_a] = Layout::horizontal([Constraint::Length(28), Constraint::Min(10)]).areas(area);
+        let [pick_a, prev_a] = Layout::horizontal([Constraint::Length(27), Constraint::Min(10)]).areas(area);
         let block = Block::bordered()
             .title(" Prompt ")
             .border_style(Style::new().fg(border));
@@ -498,11 +502,27 @@ impl App {
         Self::scrollbar(f, list_a, total, self.prompt_state.offset());
 
         let shown = match cursor.checked_sub(1) {
-            Some(t) => theme_names
-                .get(t)
-                .and_then(|n| config::theme_ps1(&self.dir, n))
-                .map(|p| prompt::render_ps1(&p))
-                .unwrap_or_default(),
+            Some(t) => {
+                let ps1 = theme_names.get(t).and_then(|n| config::theme_ps1(&self.dir, n));
+                let mut lines = ps1.as_deref().map(prompt::render_ps1).unwrap_or_default();
+                // What the theme needs from the terminal, so a prompt that looks broken has a reason.
+                let notes = ps1.as_deref().map(|p| {
+                    let font = prompt::needs_nerd_font(p).then_some(NERD_FONT_NOTE);
+                    let color = (prompt::needs_truecolor(p) && !config::terminal_truecolor())
+                        .then_some("Requires truecolor (not reported here)");
+                    [font, color]
+                });
+                if let Some(notes) = notes.filter(|n| n.iter().any(Option::is_some)) {
+                    lines.push(Line::default());
+                    for note in notes.into_iter().flatten() {
+                        lines.push(Line::styled(note, Style::new().fg(Color::Yellow)));
+                        if note == NERD_FONT_NOTE {
+                            lines.push(Line::styled(NERD_FONT_URL, Style::new().fg(Color::Cyan).add_modifier(Modifier::UNDERLINED)));
+                        }
+                    }
+                }
+                lines
+            }
             None => vec![Line::styled("the server keeps its own prompt", Style::new().add_modifier(Modifier::DIM))],
         };
         let title = if cursor == current { " Preview ".to_string() } else { " Preview (Enter to use it) ".to_string() };

@@ -22,190 +22,8 @@ macro_rules! rc_inline {
 pub const GIT: &str = git_inline!();
 pub const RC: &str = rc_inline!();
 
-/// Built-in prompt themes: (name, snippet text).
-///
-/// The first seven are one line. The rest are two lines: identity and path (plus git) on the first,
-/// input alone on the second, so a long server name never eats typing space. They make the host
-/// stand out (badge or color) so a remote shell is not mistaken for a local one, and show `✗N`
-/// after a failed command. Several are adapted from one-line oh-my-zsh themes.
-pub const THEMES: &[(&str, &str)] = &[
-    ("minimal", "export PS1='\\u@\\h:\\w\\$ '\n"),
-    (
-        "green",
-        "export PS1='\\[\\e[1;32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\] \\$ '\n",
-    ),
-    (
-        "two-line",
-        "export PS1='\\[\\e[1;36m\\]┌─[\\u@\\h]─[\\w]\\n└─\\[\\e[1;35m\\]\\$\\[\\e[0m\\] '\n",
-    ),
-    (
-        "git-branch",
-        concat!(
-            r#"export PS1='\[\e[32m\]\u@\h\[\e[0m\]:\[\e[34m\]\w\[\e[33m\]"#,
-            git_inline!(),
-            r#"\[\e[0m\] \$ '
-"#
-        ),
-    ),
-    (
-        "red-root-style",
-        "export PS1='\\[\\e[1;31m\\][\\u@\\h]\\[\\e[0m\\] \\w \\[\\e[1;31m\\]\\$\\[\\e[0m\\] '\n",
-    ),
-    (
-        "arrow",
-        "export PS1='\\[\\e[32m\\]\\u@\\h\\[\\e[0m\\] \\[\\e[36m\\]\\w\\[\\e[0m\\] \\[\\e[35m\\]❯ \\$\\[\\e[0m\\] '\n",
-    ),
-    (
-        "timestamp",
-        "export PS1='\\[\\e[90m\\][\\t]\\[\\e[0m\\] \\[\\e[33m\\]\\u@\\h\\[\\e[0m\\]:\\w \\$ '\n",
-    ),
-    // Inspired by oh-my-zsh `bira`: user@host as a green badge.
-    (
-        "bira",
-        concat!(
-            r#"export PS1='\[\e[36m\]╭─\[\e[0m\]\[\e[1;37;42m\] \u@\h \[\e[0m\] \[\e[1;34m\]\w\[\e[0m\]\[\e[33m\]"#,
-            git_inline!(),
-            r#"\[\e[0m\]\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[36m\]╰─\[\e[1m\]\$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Inspired by oh-my-zsh `gnzh`: the host in bold red, which gnzh uses over SSH.
-    (
-        "gnzh",
-        concat!(
-            r#"export PS1='\[\e[36m\]╭─\[\e[0;32m\]\u\[\e[36m\]@\[\e[1;31m\]\h\[\e[0m\] \[\e[1;34m\]\w\[\e[0m\]\[\e[33m\]"#,
-            git_inline!(),
-            r#"\[\e[0m\]\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[36m\]╰─➤ \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Inspired by oh-my-zsh `fino`: reads as a sentence, "you at server in ~/projects on (main)".
-    (
-        "fino",
-        concat!(
-            r#"export PS1='\[\e[38;5;40m\]╭─\u \[\e[38;5;245m\]at \[\e[1;38;5;33m\]\h \[\e[0;38;5;245m\]in \[\e[1;38;5;226m\]\w\[\e[0;35m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[38;5;40m\]╰─○ \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Inspired by oh-my-zsh `ys`: "# user @ host in path [time]".
-    (
-        "ys",
-        concat!(
-            r#"export PS1='\[\e[1;34m\]#\[\e[0m\] \[\e[36m\]\u \[\e[0m\]@ \[\e[1;32m\]\h \[\e[0m\]in \[\e[1;33m\]\w\[\e[0;33m\]"#,
-            git_inline!(),
-            r#"\[\e[0m\] [\t]\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1;31m\]\$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Inspired by oh-my-zsh `jonathan`: box drawing, host in green parentheses.
-    (
-        "box",
-        concat!(
-            r#"export PS1='\[\e[36m\]┌─\[\e[90m\](\[\e[36m\]\u\[\e[90m\]@\[\e[1;32m\]\h\[\e[0;90m\])─(\[\e[32m\]\w\[\e[90m\])\[\e[33m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[36m\]└─\[\e[34m\]─(\[\e[33m\]\t\[\e[34m\])─\[\e[36m\]▶ \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Loudest option: a white-on-red "⇄ host" badge that cannot be mistaken for a local shell.
-    (
-        "remote",
-        concat!(
-            r#"export PS1='\[\e[1;97;41m\] ⇄ \h \[\e[0m\] \[\e[36m\]\u\[\e[0m\]:\[\e[1;34m\]\w\[\e[0;33m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1m\]\$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Adapted from the one-line oh-my-zsh `robbyrussell`: `➜ dir git:(branch)`.
-    // The host becomes a blue badge, the arrow moves to its own line, and the full path is shown.
-    (
-        "robbyrussell",
-        concat!(
-            r#"export PS1='\[\e[1;97;44m\] \u@\h \[\e[0m\] \[\e[1;36m\]\w\[\e[1;34m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1;32m\]➜ \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Adapted from `pygmalion`: orange user, host in yellow, then path and branch.
-    (
-        "pygmalion",
-        concat!(
-            r#"export PS1='\[\e[38;5;208m\]\u\[\e[0m\]@\[\e[1;33m\]\h \[\e[38;5;111m\]\w\[\e[38;5;245m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1;31m\]» \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Adapted from `candy`: time first, host in bold blue.
-    (
-        "candy",
-        concat!(
-            r#"export PS1='\[\e[1;32m\]\t\[\e[0m\] \[\e[1;34m\]\u@\h\[\e[0m\] \[\e[1;36m\]\w\[\e[0;33m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1;33m\]❯ \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Adapted from `af-magic`: a dim rule on the left, host in gold.
-    (
-        "af-magic",
-        concat!(
-            r#"export PS1='\[\e[38;5;237m\]───\[\e[0m\] \[\e[38;5;32m\]\u\[\e[38;5;237m\]@\[\e[1;38;5;178m\]\h \[\e[0;38;5;41m\]\w\[\e[38;5;245m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[38;5;237m\]\$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Adapted from `lambda`: bold magenta host, λ on the input line.
-    (
-        "lambda",
-        concat!(
-            r#"export PS1='\[\e[1;35m\]\u@\h\[\e[0m\] \[\e[36m\]\w\[\e[33m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1;32m\]λ \$\[\e[0m\] '
-"#
-        ),
-    ),
-    // Adapted from `cloud`: a cloud, then the host in a bright cyan badge with black text (256-color
-    // codes, because bold black is drawn dark gray by many terminals).
-    (
-        "cloud",
-        concat!(
-            r#"export PS1='\[\e[1;36m\]☁ \[\e[0m\]\[\e[1;38;5;16;48;5;45m\] \u@\h \[\e[0m\] \[\e[1;34m\]\w\[\e[0;33m\]"#,
-            git_inline!(),
-            r#"\[\e[31m\]"#,
-            rc_inline!(),
-            r#"\[\e[0m\]\n\[\e[1;36m\]❯ \$\[\e[0m\] '
-"#
-        ),
-    ),
-];
+mod themes;
+pub use themes::THEMES;
 
 /// Theme given to a fresh default profile.
 pub const DEFAULT_THEME: &str = "fino";
@@ -304,9 +122,16 @@ fn apply_sgr(style: Style, params: &str) -> Style {
             40..=47 => style.bg(sgr_color(c - 40).unwrap_or(Color::Reset)),
             49 => style.bg(Color::Reset),
             90..=97 => style.fg(bright_color(c - 90).unwrap_or(Color::Reset)),
+            100..=107 => style.bg(bright_color(c - 100).unwrap_or(Color::Reset)),
             38 | 48 if codes.get(i + 1) == Some(&5) => {
                 let color = Color::Indexed(codes.get(i + 2).copied().unwrap_or(7) as u8);
                 i += 2;
+                if c == 38 { style.fg(color) } else { style.bg(color) }
+            }
+            38 | 48 if codes.get(i + 1) == Some(&2) => {
+                let channel = |at: usize| codes.get(at).copied().unwrap_or(0).min(255) as u8;
+                let color = Color::Rgb(channel(i + 2), channel(i + 3), channel(i + 4));
+                i += 4;
                 if c == 38 { style.fg(color) } else { style.bg(color) }
             }
             _ => style,
@@ -316,10 +141,49 @@ fn apply_sgr(style: Style, params: &str) -> Style {
     style
 }
 
+/// A git block is a `$(...)` that prints a whole colored piece of the prompt, with its own
+/// separators, when the directory is in a repository, and another piece when it is not. It is
+/// `GIT_BLOCK_START`, the `printf` format for a repository (`%s` is the branch), `GIT_BLOCK_MID`,
+/// the format for anywhere else and `GIT_BLOCK_END`. The colors inside are written as
+/// `\[\e[...m\]`, which bash turns into the real escape codes before it runs the command. Like the
+/// branch part of [`GIT`], it ends with the status it was given, so `$?` stays the same.
+pub const GIT_BLOCK_START: &str = r#"$(s=$?;b=$(git branch --show-current 2>/dev/null);if [ -n "$b" ];then printf ""#;
+pub const GIT_BLOCK_MID: &str = r#"" "$b";else printf ""#;
+pub const GIT_BLOCK_END: &str = r#"";fi;exit $s)"#;
+
+/// Replaces every git block with the text it prints in a repository, the branch being `main`.
+fn show_git_blocks(ps1: &str) -> String {
+    let mut out = String::new();
+    let mut rest = ps1;
+    while let Some(start) = rest.find(GIT_BLOCK_START) {
+        let after = &rest[start + GIT_BLOCK_START.len()..];
+        let Some(mid) = after.find(GIT_BLOCK_MID) else { break };
+        let elsewhere = &after[mid + GIT_BLOCK_MID.len()..];
+        let Some(end) = elsewhere.find(GIT_BLOCK_END) else { break };
+        out.push_str(&rest[..start]);
+        out.push_str(&after[..mid].replace("%s", "main"));
+        rest = &elsewhere[end + GIT_BLOCK_END.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Whether the prompt draws symbols from the Private Use Area (powerline arrows, icons), which
+/// only a Nerd Font or a powerline font has.
+pub fn needs_nerd_font(ps1: &str) -> bool {
+    ps1.chars().any(|c| matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}'))
+}
+
+/// Whether the prompt has `#rrggbb` colors, which a terminal without truecolor shows wrong.
+pub fn needs_truecolor(ps1: &str) -> bool {
+    ps1.contains("38;2;") || ps1.contains("48;2;")
+}
+
 /// Renders a bash PS1 string as styled lines using made-up values: `you@server`, the directory
 /// `~/app`, the branch `main`, and a last command that failed with status 1.
 pub fn render_ps1(ps1: &str) -> Vec<Line<'static>> {
     // They print the branch and, after a failed command, " ✗N".
+    let ps1 = show_git_blocks(ps1);
     let ps1 = ps1.replace(GIT, " (main)").replace(RC, " ✗1").replace("$(__sx_git)", " (main)").replace("$(__sx_rc)", " ✗1");
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut spans: Vec<Span<'static>> = Vec::new();

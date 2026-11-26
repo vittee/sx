@@ -51,7 +51,9 @@ fn every_theme_shows_the_server_name() {
 
 const TWO_LINE: &[&str] = &[
     "two-line", "bira", "gnzh", "fino", "ys", "box", "remote", "robbyrussell", "pygmalion",
-    "candy", "af-magic", "lambda", "cloud",
+    "candy", "af-magic", "lambda", "cloud", "paradox", "markbull", "aliens", "iterm2", "mojada", "cinnamon",
+    "larserikfinholt", "m365princess", "remk", "dracula", "marcduiker", "slim", "half-life", "spaceship",
+    "material", "kali", "mt",
 ];
 
 fn ps1_of(name: &str) -> String {
@@ -237,4 +239,56 @@ fn every_built_in_theme_shows_the_user_and_the_host() {
         assert!(ps1.contains(r"\u"), "{name} has no user name: {ps1}");
         assert!(ps1.contains(r"\h"), "{name} has no host name: {ps1}");
     }
+}
+
+#[test]
+fn a_theme_tells_when_it_needs_a_nerd_font_or_truecolor() {
+    assert!(needs_nerd_font("\\[\\e[0m\\]\u{e0b0} \\w"));
+    assert!(!needs_nerd_font("\\u@\\h ❯ \\w"));
+    assert!(needs_truecolor("\\[\\e[38;2;1;2;3m\\]x"));
+    assert!(needs_truecolor("\\[\\e[48;2;1;2;3m\\]x"));
+    assert!(!needs_truecolor("\\[\\e[38;5;208m\\]x"));
+    let count = |f: fn(&str) -> bool| THEMES.iter().filter(|(_, t)| f(t)).count();
+    assert!(count(needs_truecolor) >= 10 && count(needs_nerd_font) >= 10);
+    assert!(!needs_truecolor(theme("minimal").unwrap()) && !needs_nerd_font(theme("fino").unwrap()));
+}
+
+#[test]
+fn the_preview_draws_truecolor_and_bright_background_colors() {
+    let lines = render_ps1("\\[\\e[38;2;10;20;30;48;2;1;2;3m\\]ab\\[\\e[0;105m\\]c");
+    let spans = &lines[0].spans;
+    assert_eq!(spans[0].style.fg, Some(Color::Rgb(10, 20, 30)));
+    assert_eq!(spans[0].style.bg, Some(Color::Rgb(1, 2, 3)));
+    assert!(spans[1].style.bg.is_some());
+}
+
+#[test]
+fn a_git_block_shows_its_branch_in_the_preview() {
+    let ps1 = format!("a{GIT_BLOCK_START}[%s]{GIT_BLOCK_MID}-{GIT_BLOCK_END}z");
+    assert_eq!(text(&render_ps1(&ps1)), ["a[main]z"]);
+}
+
+#[test]
+fn every_git_block_in_a_theme_is_closed() {
+    for (name, t) in THEMES {
+        let starts = t.matches(GIT_BLOCK_START).count();
+        assert_eq!(starts, t.matches(GIT_BLOCK_MID).count(), "{name}");
+        assert_eq!(starts, t.matches(GIT_BLOCK_END).count(), "{name}");
+    }
+}
+
+#[test]
+fn a_git_block_prints_the_branch_inside_a_repository_and_not_outside_it() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
+    let script = format!(
+        "{}cd \"$(mktemp -d)\" && echo \"out[${{PS1@P}}]\"\ngit init -q -b trunk . 2>/dev/null\necho \"in[${{PS1@P}}]\"\n",
+        theme("paradox").unwrap()
+    );
+    let Some((out, err)) = run_bash(&script) else { return };
+    assert!(!err.contains("command not found"), "{err}");
+    let out_line = out.lines().find(|l| l.contains("out[")).unwrap_or_default();
+    let in_line = out.lines().find(|l| l.contains("in[")).unwrap_or_default();
+    assert!(!out_line.contains("trunk") && in_line.contains("trunk"), "{out}");
 }
