@@ -157,6 +157,10 @@ A snippet is a small file that `sx` sends to the server, such as aliases, vim an
 The editor colors shell, vim and inputrc syntax.
 A snippet that sets `PS1`, and every `.prompt` snippet, also gets a prompt preview underneath.
 
+`Ctrl-S` saves the snippet and keeps the editor open.
+`Esc` leaves the editor.
+When the snippet has changes that you did not save, `sx` asks whether to save them before it leaves the editor, switches page or quits.
+
 ### Profiles page
 
 Each profile has its own prompt and snippets.
