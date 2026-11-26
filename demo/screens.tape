@@ -72,6 +72,9 @@ Sleep 500ms
 Screenshot screens/profiles.png
 Sleep 500ms
 
+# Back to the profile list, so that Tab changes the page.
+Left
+Sleep 500ms
 Tab
 Sleep 1s
 Screenshot screens/envs.png
