@@ -18,6 +18,7 @@ The remote bash then starts with your prompt and aliases.
 - [TUI](#tui)
 - [Configurations](#configurations)
 - [Snippet kinds](#snippet-kinds)
+- [Front matter](#front-matter)
 - [Prompt themes](#prompt-themes)
 - [Snippet presets](#snippet-presets)
 - [Commands on the server](#commands-on-the-server)
@@ -209,63 +210,101 @@ The file extension sets the kind of a snippet.
 | `x.inputrc` | Sets key bindings and settings of readline, the line editor of bash |
 | `x.prompt` | A prompt theme |
 
+## Front matter
+
+A snippet can start with a front matter block.
+`sx` reads it and never sends it to the server.
+The block starts and ends with a line of three dashes, and each line in it is `key: value`:
+
+```
+---
+description: Colored ls and a few aliases
+---
+alias ll='ls -l'
+```
+
+| Key | Snippets | Value |
+|---|---|---|
+| [`description`](#description) | All | A short text |
+| [`version`](#version) | Built-in presets | `major.minor` |
+| [`nerd-font`](#nerd-font) | `.prompt` | Boolean, optional |
+
+`sx` ignores other keys.
+
+### `description`
+
+Profiles shows it on the bottom border of the Snippets box.
+Without a front matter block, the description is the first line, when it is a comment (`#`, or `"` in `.vim` files).
+
+### `version`
+
+`sx init --presets` adds the presets that are missing.
+It replaces a preset whose `version` is older than the built-in one, so fixes reach you but you lose your edits.
+It leaves a copy alone when the copy has no `version`, a `version` that is not `major.minor`, or a newer `version`.
+
+Write your own snippets under another name.
+To get a built-in preset back, delete its file.
+
+### `nerd-font`
+
+A boolean: `yes` or `no`.
+Use `yes` when the theme needs a Nerd Font, and Profiles notes it in the preview.
+
 ## Prompt themes
 
 ### Built-in themes
 
-Eleven built-in themes are based on [oh-my-zsh](https://ohmyz.sh/) themes.
-
-Press `Ctrl-E` on one in Profiles to edit it.<br>
-This saves a copy as a `.prompt` snippet, such as `fino.prompt`, and switches the profile to it.
+The built-in themes come from [oh-my-zsh](https://ohmyz.sh/) and [oh-my-posh](https://ohmyposh.dev/docs/themes) themes.
+Most need a [Nerd Font](https://www.nerdfonts.com/) for their arrows and icons, and a terminal with truecolor for their `#rrggbb` colors.
+The preview in Profiles says which ones a theme needs.
 
 ### Your own themes
 
-A theme of your own is a `.prompt` snippet. Create one in the Snippets page, or edit a built-in theme to get a copy. It then shows in the theme list in Profiles, where you pick it like a built-in one.
+A theme of your own is a `.prompt` snippet.
+Create one in the Snippets page, or edit a built-in theme to get a copy.
+It then shows in the theme list in Profiles.
 
-### Try a theme on the server
+### Switch theme on the server
 
-Run `sx-theme <name>` on the server to try a theme without reconnecting, see [`sx-theme`](#sx-theme-sxt).
+Run `sx-theme <name>` on the server to try a theme without reconnecting.
+It offers the profile's own theme and the themes you ticked for the profile in Profiles.
 
 ## Snippet presets
 
-A snippet preset is a ready-made snippet that `sx init` creates for you, all off. Turn on the ones you want in Profiles.
-
-Each preset starts with front matter that holds its `description` and its `version`, written `major.minor` such as `1.0`.<br>
-For a setup made before they existed, `sx init --presets` adds the presets that are missing.<br>
-It also replaces a preset whose `version` is older than the built-in one, so fixes reach you, and your edits to that preset are lost.<br>
-A copy with no `version`, a `version` that is not in the `major.minor` form, or a newer `version`, is left alone, so write your own snippets under another name, or delete the preset file to get the built-in one back.
+`sx init` creates the presets.
+All of them are off. Enable the ones you want in Profiles.
 
 ### Shell presets
 
 | Preset | What it gives you |
 |---|---|
-| `20-aliases` | `ll`, `la` and `gs` for `ls -alF`, `ls -A` and `git status`.<br> The default profile turns it on |
-| `colorterm` | Sets `COLORTERM=truecolor`, so `vim` and `less` use 24-bit color. Turn it on only if your terminal supports it (Windows Terminal, iTerm2, kitty and WezTerm do) |
+| `20-aliases` | `ll`, `la` and `gs` for `ls -alF`, `ls -A` and `git status`.<br> The default profile enables it |
+| `colorterm` | Sets `COLORTERM=truecolor`, so `vim` and `less` use 24-bit color.<br> Enable it only if your terminal supports it (Windows Terminal, iTerm2, kitty and WezTerm do) |
 | `no-history` | `unset HISTFILE`, so this shell writes no history file. Up-arrow history still works |
-| `man-colors` | Colored man pages, and `less` keeps colors and ignores case in searches |
+| `man-colors` | Colored man pages. `less` keeps colors and ignores case in searches |
 | `cmd-colors` | Color for `ls`, `grep` and `diff`, only where the server supports it |
-| `dir-keys` | Directory navigation<br> `Alt-Up` goes to the parent directory<br> `Alt-Left`<br> `Alt-Right` go back and forward through the directories you visited. <br> Please note that using this clears the command you were typing, use `Ctrl-Y` to paste it back |
-| `utf8` | Sets a UTF-8 locale when the shell is not in one and the server has one, so box drawing and accents show |
+| `dir-keys` | `Alt-Up` goes to the parent directory.<br> `Alt-Left` and `Alt-Right` go back and forward through the directories you visited.<br> These keys clear the command you were typing. `Ctrl-Y` pastes it back |
+| `utf8` | Sets a UTF-8 locale when the shell is not in one and the server has one. Box drawing and accents then show |
 
 ### Inputrc presets
 
-`.inputrc` presets change how bash's line editor (readline) behaves: key bindings and settings for typing, history and Tab completion.
+`.inputrc` presets set readline key bindings and settings for typing, history and Tab completion.
 
 | Preset | What it gives you |
 |---|---|
-| `completion-colors.inputrc` | Tab completion lists are colored with your `LS_COLORS`, and the part you typed is highlighted.<br> Turn on `cmd-colors` too if the server has no `LS_COLORS` |
+| `completion-colors.inputrc` | Tab completion lists use the colors of your `LS_COLORS` and highlight the part you typed.<br> Enable `cmd-colors` too if the server has no `LS_COLORS` |
 | `history-search.inputrc` | Up and Down search the history for what you typed so far |
 | `keys-fix.inputrc` | `Home`, `End`, `Delete` and `Ctrl-Left/Right` work on every server |
 | `menu-complete.inputrc` | `Tab` cycles through the matches and `Shift-Tab` goes back |
 | `no-bell.inputrc` | No beep or window flash when a completion fails or the cursor hits an edge |
-| `sudo-esc.inputrc` | `Esc` twice puts `sudo` in front of the command line (emacs keys only, since in vi mode `Esc` leaves insert mode). It also shortens the wait for a longer key sequence from 500 to 100 ms (`keyseq-timeout`), so `Esc Esc` does not lag |
+| `sudo-esc.inputrc` | `Esc` twice puts `sudo` in front of the command line (emacs keys only: in vi mode `Esc` leaves insert mode).<br> It also cuts the wait for a key sequence from 500 to 100 ms (`keyseq-timeout`), so `Esc Esc` does not lag |
 
 ### Vim presets
 
 | Preset | What it sets |
 |---|---|
 | `vim-basic` | Syntax, filetype indent, line numbers, ruler, incremental and highlighted search |
-| `vim-recommended` | Everything in `vim-basic`, plus smart-case search, scroll margin, whitespace markers, split directions, `j`/`k` on screen lines, Enter clears the highlight |
+| `vim-recommended` | Everything in `vim-basic`, plus smart-case search, scroll margin, whitespace markers, split directions and `j`/`k` on screen lines.<br> `Enter` clears the highlight |
 | `vim-indent-2`, `vim-indent-4` | Spaces for indenting |
 | `vim-indent-tabs` | Real tabs, 8 wide |
 | `vim-mouse` | Mouse and system clipboard |
