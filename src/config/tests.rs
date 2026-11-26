@@ -952,6 +952,9 @@ fn front_matter_gives_the_description_and_is_never_sent() {
 #[test]
 fn without_front_matter_the_first_comment_line_is_the_description() {
     assert_eq!(parse_meta("a", "# Colored ls\nalias x=y\n").description.as_deref(), Some("Colored ls"));
+    let nerd = |v: &str| parse_meta("a.prompt", &format!("---\nnerd-font: {v}\n---\nexport PS1='> '\n")).nerd_font;
+    assert_eq!((nerd("yes"), nerd("True"), nerd("no"), nerd("false"), nerd("maybe")), (Some(true), Some(true), Some(false), Some(false), None));
+    assert_eq!(parse_meta("a.prompt", "# nerd-font: yes\nexport PS1='> '\n").nerd_font, None);
     assert_eq!(parse_meta("a.vim", "\" Vim basics\nset number\n").description.as_deref(), Some("Vim basics"));
     assert_eq!(parse_meta("a.inputrc", "# Tab cycles\n").description.as_deref(), Some("Tab cycles"));
     assert_eq!(parse_meta("a", "#!/bin/sh\necho\n").description, None, "a shebang is not a description");

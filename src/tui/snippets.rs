@@ -253,7 +253,7 @@ impl App {
 
         let text = self.editor.text();
         let is_prompt = self.editor_name.as_deref().is_some_and(config::is_prompt_snippet);
-        let ps1 = if is_prompt { prompt::file_ps1(&text) } else { prompt::extract_ps1(&text) };
+        let ps1 = if is_prompt { prompt::file_ps1(config::without_front_matter(&text)) } else { prompt::extract_ps1(&text) };
         let preview_h = ps1.as_ref().map_or(0, |p| prompt::render_ps1(p).len() as u16 + 2);
         let [ed_a, prev_a] =
             Layout::vertical([Constraint::Min(5), Constraint::Length(preview_h)]).areas(right);

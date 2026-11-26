@@ -117,13 +117,15 @@ impl std::fmt::Display for Version {
 /// ---
 /// ```
 ///
-/// Only `description` and `version` (of the built-in presets) are known so far, other keys are ignored. The front matter is never sent to
-/// the server. A file without it gets its `description` from a first line that is a comment.
+/// Only `description`, `version` (of the built-in presets) and `nerd-font` (of a `.prompt` snippet,
+/// `yes` or `no`) are known so far, other keys are ignored. The front matter is never sent to the server. A file without it gets its `description` from a first line that is a comment.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SnippetMeta {
     pub description: Option<String>,
     /// The version of a built-in preset, so `sx init --presets` can tell an older copy.
     pub version: Option<Version>,
+    /// Whether a `.prompt` snippet needs a Nerd Font. `None` leaves it to what the prompt draws.
+    pub nerd_font: Option<bool>,
 }
 
 /// Splits the front matter off `text`. The front matter is a first line of `---`, `key: value`
@@ -164,11 +166,16 @@ pub fn parse_meta(name: &str, text: &str) -> SnippetMeta {
         return SnippetMeta {
             description: value("description").filter(|d| !d.is_empty()),
             version: value("version").and_then(|v| v.parse().ok()),
+            nerd_font: value("nerd-font").and_then(|v| match v.to_ascii_lowercase().as_str() {
+                "yes" | "true" => Some(true),
+                "no" | "false" => Some(false),
+                _ => None,
+            }),
         };
     }
     let first = text.strip_prefix('\u{feff}').unwrap_or(text).lines().next().unwrap_or("").trim();
     let comment = first.strip_prefix(comment_marker(name)).filter(|c| !c.starts_with('!'));
-    SnippetMeta { description: comment.map(|c| c.trim().to_string()).filter(|d| !d.is_empty()), version: None }
+    SnippetMeta { description: comment.map(|c| c.trim().to_string()).filter(|d| !d.is_empty()), version: None, nerd_font: None }
 }
 
 fn unquote(s: &str) -> &str {

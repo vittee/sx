@@ -2640,6 +2640,26 @@ fn the_cursor_moves_in_a_text_row_of_the_environment_form() {
 }
 
 #[test]
+fn a_prompt_snippet_can_say_it_needs_a_nerd_font() {
+    let (_t, mut app) = app();
+    let theme = |app: &mut App, name: &str, text: &str| {
+        config::write_snippet(&app.dir, name, text).unwrap();
+        app.reload_snippets(None);
+        app.switch_tab(Tab::Profiles);
+        key(app, KeyCode::Right);
+        let row = app.theme_names().iter().position(|n| n == name).unwrap() + 1;
+        app.prompt_cursor = Some(("default".into(), row));
+        render(app)
+    };
+    let plain = theme(&mut app, "a.prompt", "export PS1='> '\n");
+    assert!(!plain.contains("Requires Nerd Font"), "{plain}");
+    let says = theme(&mut app, "b.prompt", "---\nnerd-font: yes\n---\nexport PS1='> '\n");
+    assert!(says.contains("Requires Nerd Font"), "{says}");
+    let denies = theme(&mut app, "c.prompt", "---\nnerd-font: no\n---\nexport PS1='\u{e0b0} '\n");
+    assert!(!denies.contains("Requires Nerd Font"), "{denies}");
+}
+
+#[test]
 fn the_preview_says_when_a_theme_needs_a_nerd_font() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
@@ -2695,3 +2715,33 @@ fn leaving_the_prompt_pane_or_the_page_drops_an_unapplied_preview() {
     assert!(!render(&mut app).contains("Enter to use it"), "coming back starts on the theme in use");
 }
 
+#[test]
+fn the_prompt_preview_of_a_snippet_leaves_out_its_front_matter() {
+    let (_t, mut app) = app();
+    config::write_snippet(&app.dir, "p.prompt", "---\nnerd-font: yes\n---\n\\u@\\h> \n").unwrap();
+    app.reload_snippets(Some("p.prompt"));
+    app.switch_tab(Tab::Snippets);
+    let screen = render(&mut app);
+    let preview = screen.split("Prompt preview").nth(1).expect("a preview");
+    assert!(preview.contains("you@server>") && !preview.contains("nerd-font") && !preview.contains("---"), "{screen}");
+}
+
+#[test]
+fn copying_a_nerd_font_theme_with_ctrl_e_says_so_in_its_front_matter() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right);
+    app.set_prompt_index(app.theme_names().iter().position(|n| n == "paradox").unwrap() + 1);
+    ctrl(&mut app, 'e');
+    assert_eq!(app.editor_name.as_deref(), Some("paradox.prompt"));
+    let copy = config::read_snippet(&app.dir, "paradox.prompt").unwrap();
+    assert!(copy.starts_with("---\nnerd-font: yes\n---\n"), "{copy}");
+    assert_eq!(config::snippet_meta(&app.dir, "paradox.prompt").nerd_font, Some(true));
+    assert_eq!(config::theme_ps1(&app.dir, "paradox.prompt"), config::theme_ps1(&app.dir, "paradox"), "the prompt itself is the same");
+    // a theme without symbols is copied as it was
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right);
+    app.set_prompt_index(app.theme_names().iter().position(|n| n == "fino").unwrap() + 1);
+    ctrl(&mut app, 'e');
+    assert!(!config::read_snippet(&app.dir, "fino.prompt").unwrap().starts_with("---"));
+}

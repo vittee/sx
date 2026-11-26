@@ -103,9 +103,12 @@ impl App {
             Some(n) if config::is_prompt_snippet(&n) => n,
             other => {
                 let base = other.clone().unwrap_or_else(|| "my-prompt".to_string());
+                // A theme that draws symbols keeps saying so in the copy, in its front matter.
                 let text = config::theme_ps1(&self.dir, other.as_deref().unwrap_or(prompt::DEFAULT_THEME))
-                    .map(|ps1| format!("{ps1}
-"))
+                    .map(|ps1| {
+                        let front = if prompt::needs_nerd_font(&ps1) { "---\nnerd-font: yes\n---\n" } else { "" };
+                        format!("{front}{ps1}\n")
+                    })
                     .unwrap_or_default();
                 let mut name = format!("{base}.prompt");
                 let mut n = 2;
@@ -541,7 +544,9 @@ impl App {
                 let mut lines = ps1.as_deref().map(prompt::render_ps1).unwrap_or_default();
                 // What the theme needs from the terminal, so a prompt that looks broken has a reason.
                 let notes = ps1.as_deref().map(|p| {
-                    let font = prompt::needs_nerd_font(p).then_some(NERD_FONT_NOTE);
+                    // A `.prompt` snippet can say so itself with `nerd-font: yes` or `no`.
+                    let says = theme_names.get(t).filter(|n| config::is_prompt_snippet(n)).and_then(|n| config::snippet_meta(&self.dir, n).nerd_font);
+                    let font = says.unwrap_or_else(|| prompt::needs_nerd_font(p)).then_some(NERD_FONT_NOTE);
                     let color = (prompt::needs_truecolor(p) && !config::terminal_truecolor())
                         .then_some("Requires truecolor (not reported here)");
                     [font, color]
