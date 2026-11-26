@@ -180,7 +180,7 @@ impl App {
                 let mut st = self.snip_state;
                 Self::move_sel(&mut st, len, if k.code == KeyCode::Up { -1 } else { 1 });
                 if let Some(i) = st.selected() {
-                    self.select_snippet(i);
+                    self.pick_snippet(i);
                 }
             }
             KeyCode::Enter | KeyCode::Right if self.editor_name.is_some() => self.editor_focus = true,
@@ -195,25 +195,34 @@ impl App {
                     self.mode = Mode::Confirm(Pending::Snippet(name));
                 }
             }
-            KeyCode::Esc => {
-                self.flush_editor();
-                self.quit = true;
-            }
+            // With unsaved changes the question comes first, and the quit follows the answer.
+            KeyCode::Esc if !self.ask_unsaved(After::Quit) => self.quit = true,
             _ => {}
         }
     }
 
+    /// Opens snippet `i` in the editor, after asking about unsaved changes in the one that is open.
+    fn pick_snippet(&mut self, i: usize) {
+        if self.snip_state.selected() != Some(i) && self.ask_unsaved(After::Snippet(i)) {
+            return;
+        }
+        self.select_snippet(i);
+    }
+
     pub(super) fn on_key_editor(&mut self, k: KeyEvent, ctrl: bool) {
+        if k.code == KeyCode::Esc {
+            // With unsaved changes the question comes first, and leaving follows the answer.
+            if !self.ask_unsaved(After::Leave) {
+                self.editor_focus = false;
+            }
+            return;
+        }
         let e = &mut self.editor;
         if common_key(e, k, true) {
             return;
         }
         match k.code {
             KeyCode::Char('s') if ctrl => self.flush_editor(),
-            KeyCode::Esc => {
-                self.editor_focus = false;
-                self.flush_editor();
-            }
             KeyCode::Char(c) if !ctrl => e.insert_char(c),
             KeyCode::Enter => e.newline(),
             KeyCode::Tab => e.insert_str("  "),
@@ -248,8 +257,8 @@ impl App {
         if inside(list, x, y) {
             let i = self.snip_state.offset() + (y - list.y) as usize;
             if i < self.snippets.len() {
-                self.select_snippet(i);
                 self.editor_focus = false;
+                self.pick_snippet(i);
             }
         } else if inside(ed, x, y) && self.editor_name.is_some() {
             self.editor_focus = true;

@@ -138,6 +138,18 @@ enum Pending {
     Env(String),
     /// Holds the ssh arguments of the connection to make.
     Connect(Vec<String>),
+    /// The open snippet has unsaved changes. Holds what the user was doing when they were asked.
+    Unsaved(After),
+}
+
+/// What the user was doing when the editor asked about unsaved changes, and goes on with after the answer.
+#[derive(Clone, Debug)]
+enum After {
+    /// Leave the editor, back to the snippet list.
+    Leave,
+    Tab(Tab),
+    Snippet(usize),
+    Quit,
 }
 
 #[derive(Clone, Debug)]
@@ -240,6 +252,8 @@ pub struct App {
     quit: bool,
     hits: Hits,
     last_click: Option<(Instant, Tab, usize)>,
+    /// When a key that is not an answer was pressed at a question. The question shows reversed for a moment.
+    flash: Option<Instant>,
     /// ssh arguments to run once the event handler returns (needs the terminal).
     pending_connect: Option<Vec<String>>,
     /// How far the options popup or the picker was dragged from the centre, and where a drag last was.
@@ -300,6 +314,7 @@ impl App {
             quit: false,
             hits: Hits::default(),
             last_click: None,
+            flash: None,
             pending_connect: None,
             popup_offset: (0, 0),
             popup_drag: None,
@@ -406,8 +421,8 @@ impl App {
 
     fn global_nav(&mut self, k: KeyEvent) -> bool {
         match k.code {
-            KeyCode::Tab => self.switch_tab(Tab::from_index(self.tab.index() + 1)),
-            KeyCode::BackTab => self.switch_tab(Tab::from_index(self.tab.index() + TAB_TITLES.len() - 1)),
+            KeyCode::Tab => self.go_tab(Tab::from_index(self.tab.index() + 1)),
+            KeyCode::BackTab => self.go_tab(Tab::from_index(self.tab.index() + TAB_TITLES.len() - 1)),
             _ => return false,
         }
         true
@@ -437,7 +452,49 @@ impl App {
         }
     }
 
+    /// Asks what to do with the unsaved changes of the open snippet. False when there are none.
+    fn ask_unsaved(&mut self, after: After) -> bool {
+        let unsaved = self.editor_name.is_some() && self.editor.dirty;
+        if unsaved {
+            self.mode = Mode::Confirm(Pending::Unsaved(after));
+        }
+        unsaved
+    }
+
+    /// Switches to a tab that the user asked for, after asking about unsaved changes.
+    fn go_tab(&mut self, tab: Tab) {
+        if !self.ask_unsaved(After::Tab(tab)) {
+            self.switch_tab(tab);
+        }
+    }
+
+    fn on_key_unsaved(&mut self, k: KeyEvent, after: After) {
+        match k.code {
+            KeyCode::Char('y' | 'Y') => self.flush_editor(),
+            KeyCode::Char('n' | 'N') => {
+                self.load_editor();
+                self.say("discarded the changes");
+            }
+            // Esc keeps editing. Any other key is not an answer: the question stays and blinks.
+            KeyCode::Esc => return,
+            _ => {
+                self.flash = Some(Instant::now());
+                self.mode = Mode::Confirm(Pending::Unsaved(after));
+                return;
+            }
+        }
+        match after {
+            After::Leave => self.editor_focus = false,
+            After::Tab(tab) => self.switch_tab(tab),
+            After::Snippet(i) => self.select_snippet(i),
+            After::Quit => self.quit = true,
+        }
+    }
+
     fn on_key_confirm(&mut self, k: KeyEvent, pending: Pending) {
+        if let Pending::Unsaved(after) = pending {
+            return self.on_key_unsaved(k, after);
+        }
         if !matches!(k.code, KeyCode::Char('y' | 'Y')) {
             return self.say("cancelled");
         }
@@ -446,6 +503,7 @@ impl App {
             Pending::Profile(n) => self.delete_profile(&n),
             Pending::Env(n) => self.delete_env(&n),
             Pending::Connect(args) => self.pending_connect = Some(args),
+            Pending::Unsaved(_) => {}
         }
     }
 
@@ -533,7 +591,7 @@ impl App {
         }
 
         if click && let Some(i) = self.hits.tabs.iter().position(|r| inside(*r, x, y)) {
-            return self.switch_tab(Tab::from_index(i));
+            return self.go_tab(Tab::from_index(i));
         }
         match self.tab {
             Tab::Hosts => self.mouse_hosts(x, y, wheel, click),

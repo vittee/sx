@@ -438,7 +438,7 @@ fn tab_key_cycles_tabs() {
 }
 
 #[test]
-fn editing_a_snippet_autosaves_on_esc() {
+fn esc_in_the_editor_asks_what_to_do_with_the_changes() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);
     render(&mut app);
@@ -447,9 +447,90 @@ fn editing_a_snippet_autosaves_on_esc() {
     typed(&mut app, "alias zz='ls'");
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Esc);
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Unsaved(_))), "asks first");
+    assert!(app.editor_focus && app.editor.dirty);
+    assert!(render(&mut app).contains("has unsaved changes. Save? (y/n)"));
+    let saved = config::read_snippet(&app.dir, "20-aliases").unwrap();
+    assert!(!saved.contains("alias zz"), "nothing is saved before the answer");
+
+    // a key that is not an answer leaves the question open and makes it blink
+    assert!(app.flash.is_none());
+    key(&mut app, KeyCode::Char('x'));
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Unsaved(_))) && app.flash.is_some());
+    assert!(!app.editor.text().contains('x'), "the key was not typed");
+    let backend = ratatui::backend::TestBackend::new(110, 30);
+    let mut term = ratatui::Terminal::new(backend).unwrap();
+    term.draw(|f| app.draw(f)).unwrap();
+    assert!(term.backend().buffer()[(1, 28)].modifier.contains(Modifier::REVERSED), "the question blinks");
+    app.flash = Some(Instant::now() - Duration::from_secs(1));
+    term.draw(|f| app.draw(f)).unwrap();
+    assert!(!term.backend().buffer()[(1, 28)].modifier.contains(Modifier::REVERSED), "and stops");
+    assert!(render(&mut app).contains("Save? (y/n)"));
+
+    // Esc keeps editing
+    key(&mut app, KeyCode::Esc);
+    assert!(matches!(app.mode, Mode::Normal) && app.editor_focus && app.editor.dirty);
+
+    // `n` drops the changes and goes back to the list
+    key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Char('n'));
+    assert!(!app.editor_focus && !app.editor.dirty);
+    assert!(!app.editor.text().contains("alias zz"));
+    assert!(!config::read_snippet(&app.dir, "20-aliases").unwrap().contains("alias zz"));
+
+    // `y` saves and goes back to the list
+    key(&mut app, KeyCode::Enter);
+    typed(&mut app, "alias zz='ls'");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Char('y'));
     assert!(!app.editor_focus);
     let saved = config::read_snippet(&app.dir, "20-aliases").unwrap();
     assert!(saved.starts_with("alias zz='ls'\n"), "{saved}");
+}
+
+#[test]
+fn leaving_a_modified_snippet_by_the_list_a_tab_or_esc_asks_first() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Snippets);
+    render(&mut app);
+    let first = app.selected_snippet().unwrap();
+    key(&mut app, KeyCode::Enter);
+    typed(&mut app, "# kept
+");
+    key(&mut app, KeyCode::Enter);
+
+    // a click on another snippet in the list
+    let list = app.hits.snip_list;
+    click(&mut app, list.x + 1, list.y + 1);
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Unsaved(After::Snippet(1)))));
+    assert_eq!(app.selected_snippet().as_deref(), Some(first.as_str()), "still on the same one");
+    key(&mut app, KeyCode::Char('y'));
+    assert_ne!(app.selected_snippet().as_deref(), Some(first.as_str()));
+    assert!(config::read_snippet(&app.dir, &first).unwrap().contains("# kept"));
+
+    // a click on another tab
+    key(&mut app, KeyCode::Enter);
+    typed(&mut app, "# dropped
+");
+    key(&mut app, KeyCode::Enter);
+    let tab = app.hits.tabs[0];
+    click(&mut app, tab.x, tab.y);
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Unsaved(After::Tab(Tab::Hosts)))));
+    key(&mut app, KeyCode::Char('n'));
+    assert_eq!(app.tab, Tab::Hosts);
+    let second = app.snippets[app.snip_state.selected().unwrap()].clone();
+    assert!(!config::read_snippet(&app.dir, &second).unwrap().contains("# dropped"));
+
+    // Esc in the list with changes pending quits only after the answer
+    app.switch_tab(Tab::Snippets);
+    key(&mut app, KeyCode::Enter);
+    typed(&mut app, "x");
+    app.editor_focus = false;
+    key(&mut app, KeyCode::Esc);
+    assert!(!app.quit && matches!(app.mode, Mode::Confirm(Pending::Unsaved(After::Quit))));
+    key(&mut app, KeyCode::Char('n'));
+    assert!(app.quit);
 }
 
 #[test]
@@ -702,6 +783,7 @@ fn ctrl_z_and_ctrl_y_undo_and_redo_in_every_text_box() {
     assert_eq!(app.editor.lines[0], "one two");
     // a text row of an environment is saved as it is undone
     key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Char('n'));
     open_envs(&mut app);
     ctrl(&mut app, 'n');
     typed(&mut app, "qa");
@@ -781,7 +863,8 @@ fn duplicate_snippet_name_can_be_edited_and_copies_unsaved_edits() {
     key(&mut app, KeyCode::Enter); // edit
     typed(&mut app, "# edited\n");
     key(&mut app, KeyCode::Enter);
-    key(&mut app, KeyCode::Esc); // autosave, back to the list
+    key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Char('y')); // save, back to the list
     ctrl(&mut app, 'y');
     for _ in 0.."-copy".len() {
         key(&mut app, KeyCode::Backspace);
@@ -1314,6 +1397,7 @@ fn e_copies_a_builtin_theme_and_opens_it_in_the_editor() {
     // editing and leaving saves, and the profile sends the edited prompt
     typed(&mut app, "mine ");
     key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Char('y'));
     assert!(config::build_rc(&app.dir, &app.cfg, "default").contains("export PS1='mine "));
     // a second copy of the same theme does not overwrite the first
     app.switch_tab(Tab::Profiles);

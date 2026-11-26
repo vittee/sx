@@ -30,12 +30,18 @@ impl App {
                 let label = self.cfg.confirm_label(&host).unwrap_or_default();
                 Line::styled(format!(" Connect to {host} ({label})? (y/N)"), Style::new().fg(Color::Yellow))
             }
+            Mode::Confirm(Pending::Unsaved(_)) => {
+                let name = self.editor_name.as_deref().map(config::snippet_file).unwrap_or_default();
+                let blink = self.flash.is_some_and(|t| t.elapsed() < Duration::from_millis(200));
+                let style = Style::new().fg(Color::Yellow);
+                Line::styled(format!(" {name} has unsaved changes. Save? (y/n)"), if blink { style.add_modifier(Modifier::REVERSED) } else { style })
+            }
             Mode::Confirm(p) => {
                 let what = match p {
                     Pending::Snippet(n) => format!("snippet {n}"),
                     Pending::Profile(n) => format!("profile {n}"),
                     Pending::Env(n) => format!("environment {n}"),
-                    Pending::Connect(_) => String::new(),
+                    Pending::Connect(_) | Pending::Unsaved(_) => String::new(),
                 };
                 Line::styled(format!(" Delete {what}? (y/N)"), Style::new().fg(Color::Yellow))
             }
@@ -94,7 +100,7 @@ impl App {
                 ("Tab", "next"),
                 ("Esc", "quit"),
             ],
-            (_, Tab::Snippets) if self.editor_focus => &[("Ctrl-S", "save"), ("Esc", "done (autosaves)")],
+            (_, Tab::Snippets) if self.editor_focus => &[("Ctrl-S", "save"), ("Esc", "done")],
             (_, Tab::Snippets) => &[
                 ("Up/Down", "choose"),
                 ("Enter", "edit"),
