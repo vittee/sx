@@ -23,6 +23,7 @@
 - Ask what to do with unsaved changes when leaving the snippet editor
 - Make the questions modal and blink them on a click
 - Hide a status message after a few seconds
+- Show the number of jobs in the prompt (#1)
 
 ### Fixes
 
