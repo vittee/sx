@@ -102,14 +102,13 @@ so do not put secrets in snippets.
 
 ### Navigation
 
-Keyboard and mouse both work (click, double-click, wheel).
+Keyboard and mouse both work.
 
-While the mouse is captured, the terminal cannot select text.<br>
-Use `F2` to toggle mouse capture.
-Most terminals also let you select while holding `Shift`.
+While `sx` captures the mouse, the terminal cannot select text.
+`F2` toggles mouse capture.
+Most terminals also select text while you hold `Shift`.
 
-If the wheel or trackpad scrolls the wrong way (natural scrolling on macOS, for example)<br>
-Enable `invert_scroll`
+If the wheel or trackpad scrolls the wrong way, set `invert_scroll`:
 
 ```toml
 # config.toml
@@ -119,55 +118,40 @@ invert_scroll = true
 
 ### Hosts page
 
-The Hosts page is where you start. It lists the servers you can connect to.
+The Hosts page lists the servers you can connect to.
+It reads them from `~/.ssh/config` and `~/.ssh/known_hosts`, and the `source` column shows which one a host came from.
 
-Type to search or pick one from the list, and press `Enter` to get a shell with your prompt and aliases.
-
-The list comes from `~/.ssh/config` and `~/.ssh/known_hosts`.
-
-The `source` column shows which one a host came from.
-
-The letters you typed are marked in the host and target columns of the list.
-
-You can also connect to a host by typing it directly in the search box.
-
-Typing `root@web` filters the list on `web` and connects to the selected host as `root`, for this
-connection only.
+Type to filter the list, and press `Enter` to connect to the selected host.
+Type `user@web` to filter on `web` and connect as `user`.
+You can also type a host that is not in the list, and connect to it directly.
 
 ![The Hosts page](demo/screens/hosts.png)
 
 #### Keys
-- `Left`, `Right`, `Delete` and a click move and edit the cursor in the search box.<br>`Up` and `Down` move in the list.
-- `Ctrl-P`, or click on the profile column.<br>The arrow keys only move in the list, so a stray key cannot change a profile.
-- `Ctrl-F`, or click on the star, marks a favorite.
-- `Ctrl-T`, or click on the `env` column, tags the host with an environment such as `prod`, see [Environments](#environments).
-- `Ctrl-E` picks the snippets for the selected host.
-  A snippet outside its profile is added as an extra, and one of the profile can be turned off for this host.
-  The profile column then reads `default+2-1`, for 2 extras and 1 left out.
-- `Ctrl-O` edits the connection options of the selected host.
-  A host can keep several named options, such as `root` or `deploy via bastion`, and the form lists its keys.
-  `Ctrl-K` picks the identity file from the keys in `~/.ssh` and the jump host from the other hosts.
-  Hosts that other saved options already use as a jump host come first, then names like `bastion`, `jump` or `gateway`.
+
+- `Up` and `Down` move in the list.
+- `Ctrl-P`, or a click on the profile column, picks a profile.
+- `Ctrl-F`, or a click on the star, marks a favorite.
+- `Ctrl-T`, or a click on the `env` column, tags the host with an environment.
+- `Ctrl-E` picks the extra snippets.
+- `Ctrl-O` edits the connection options.
 - `Ctrl-L` picks one of the host's named options and connects with them.
-- `Ctrl-S` cycles the sort column and `Ctrl-R` reverses it, or click a column header (click again to reverse).
+- `Ctrl-S` cycles the sort column.
+- `Ctrl-R` reverses the sort order.
 
 ![The connection options form, with the jump host picker open](demo/screens/options.png)
 
-When the terminal is tall enough,
-a history pane under the list shows the last five sessions of the selected host:
-when, how long, how it ended.
+When the terminal is tall enough, a history pane shows under the list.
+It shows the last five sessions of the selected host: when, how long, how it ended.
 
 ### Snippets page
 
-The Snippets page is where you create and edit snippets: the small files `sx` sends to the server, such as aliases, vim and tmux settings, key bindings and prompts.
-
-The file name decides what a snippet is, see [Snippet kinds](#snippet-kinds).
-
-`sx init` creates ready-made ones, see [Snippet presets](#snippet-presets).
+The Snippets page is where you create and edit snippets.
+A snippet is a small file that `sx` sends to the server, such as aliases, vim and tmux settings, key bindings and prompts.
 
 ![The Snippets page](demo/screens/snippets.png)
 
-The editor colors shell, vim and inputrc syntax.<br>
+The editor colors shell, vim and inputrc syntax.
 A snippet that sets `PS1`, and every `.prompt` snippet, also gets a prompt preview underneath.
 
 ### Profiles page
@@ -177,26 +161,26 @@ Each profile has its own prompt and snippets.
 ![The Profiles page](demo/screens/profiles.png)
 
 #### Keys
-- `Ctrl-N` creates a profile
-- `Ctrl-Y` copies the selected profile
-- `Ctrl-D` deletes it
-- `Ctrl-G` makes it the default
-- Clicking `Window title` or `Prompt marks` in the Terminal box turns it on or off for the profile, see [Terminal integration](#terminal-integration)
-- `Ctrl-E` edits the selected prompt theme
+
+- `Ctrl-N` creates a profile.
+- `Ctrl-Y` copies the selected profile.
+- `Ctrl-D` deletes it.
+- `Ctrl-G` makes it the default.
+- `Ctrl-E` edits the selected prompt theme.
 
 ### Envs page
 
-An environment is a name, a color and host name patterns, see [Environments](#environments).
+The Envs page is where you make and edit environments.
+The host name patterns of an environment suggest its tag in the host list.
 
 ![The Envs page](demo/screens/envs.png)
 
 #### Keys
-- `Ctrl-N` creates an environment
-- `Ctrl-Y` copies the selected environment
-- `Ctrl-R` renames it
-- `Ctrl-D` deletes it
-- `Enter` edits it
-- In the form, `Tab`, `Up` and `Down` move between the rows, a click on a box or `Space` switches a feature, and the text rows take the cursor keys
+
+- `Ctrl-N` creates an environment.
+- `Ctrl-Y` copies the selected environment.
+- `Ctrl-R` renames it.
+- `Ctrl-D` deletes it.
 
 ## Configurations
 
