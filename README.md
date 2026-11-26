@@ -403,12 +403,35 @@ Set the environment variable `SX_TRUECOLOR` to `1` or `0` to choose by hand.
 
 ### Guard
 
-List the commands in the Envs form, separated by commas. `*` is any text and `?` is one character.
+The guard asks for confirmation before a command on your list runs on the server.<br>
+You write the list as command patterns.<br>
+When a command you type matches a pattern, `sx` shows the command and asks whether to run it.
+
+#### Rules
+
+Write the patterns in the Envs form, separated by commas.
+A pattern can use two wildcards:
+
+- `*` is any text, including no text.
+- `?` is exactly one character.
+
+A pattern must match the whole command, from the first character to the last.
+Add `*` at the end to match the arguments:
+
+| Pattern | Matches | Does not match |
+|---|---|---|
+| `reboot*` | `reboot`, `reboot now` | `sudo reboot` |
+| `rm -r*` | `rm -rf /tmp/x`, `rm -r dir` | `rm file` |
+| `dd *of=/dev/*` | `dd if=a.img of=/dev/sda` | `dd if=a.img of=a.bin` |
+| `git push*--force*` | `git push --force`, `git push origin main --force` | `git push` |
+| `systemctl restart ?ginx` | `systemctl restart nginx` | `systemctl restart apache` |
+
+> A pattern cannot contain a comma, because a comma separates the patterns.
+
+#### What the guard checks
 
 `sx` matches each command you type as written, after aliases.
 `a && b` counts as two commands.
-On a match, `sx` asks for confirmation.
-The command runs only when you answer `y`.
 
 The guard checks only what you type at the prompt, and it checks the text as you typed it.
 It guards against slips, and it does not stop a command on purpose:
