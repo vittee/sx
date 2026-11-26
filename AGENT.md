@@ -61,6 +61,9 @@ Use `cargo check`, clippy and test, or build with `--target-dir` somewhere else.
 - The README has a `## Contents` list of its `##` headings. Update it when you add, rename or move one.
   Check that links such as `#sx-theme-sxt` match the heading, with punctuation dropped and spaces turned into `-`.
 - Wrap prose in the README at clause ends, one clause per line where it helps.
+- Write the README in plain, short sentences (the `asd-ste100` and `unslop` skills).
+  Say what a feature does. Do not quote the text the app shows, and do not name an example value such as `prod` that steers the reader.
+  Do not describe a feature in the README unless the code does it. Check each claim against the code.
 - A built-in preset has a `version` in its front matter. When you change a preset's text, add it to `VERSIONS` in `src/config/presets.rs` with a higher `x.y` version,
   or `sx init --presets` will not replace the older copies.
 
