@@ -105,7 +105,7 @@ impl App {
                 ("Esc", "quit"),
             ],
             (_, Tab::Profiles) if self.prof_focus == ProfFocus::Prompt => {
-                &[("Up/Down", "preview"), ("Enter", "use"), ("^E", "edit theme"), ("→", "snippets"), ("←/Esc", "back")]
+                &[("Up/Down", "preview"), ("Enter", "use"), ("Space", "in sx-theme"), ("^E", "edit theme"), ("→", "snippets"), ("←/Esc", "back")]
             }
             (_, Tab::Profiles) if self.prof_focus == ProfFocus::Snippets => {
                 &[("Arrows", "choose"), ("Space", "toggle"), ("←/Esc", "back")]

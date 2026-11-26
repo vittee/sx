@@ -448,6 +448,8 @@ fn named_option_sets_round_trip_and_old_configs_still_load() {
 fn sx_theme_switches_between_the_built_in_and_your_own_themes() {
     let (tmp, mut cfg) = setup();
     write_snippet(tmp.path(), "mine.prompt", "export PS1='mine> '\n").unwrap();
+    cfg.profiles.get_mut("default").unwrap().themes =
+        prompt::THEMES.iter().map(|(n, _)| n.to_string()).chain(["mine.prompt".to_string()]).collect();
     let rc = build_rc(tmp.path(), &cfg, "default");
     assert!(rc.contains("sx-theme() {"), "{rc}");
     for (name, _) in prompt::THEMES {
@@ -457,7 +459,29 @@ fn sx_theme_switches_between_the_built_in_and_your_own_themes() {
     assert!(rc.contains("complete -W '") && rc.contains("mine.prompt' sx-theme sxt"), "{rc}");
     assert!(rc.contains("alias sxt=sx-theme\n"), "{rc}");
     cfg.set_prompt("default", None);
+    assert!(build_rc(tmp.path(), &cfg, "default").contains("sx-theme() {"), "listed themes keep the switcher");
+    cfg.profiles.get_mut("default").unwrap().themes.clear();
     assert!(!build_rc(tmp.path(), &cfg, "default").contains("sx-theme"), "no theme, no switcher");
+}
+
+#[test]
+fn sx_theme_offers_only_the_profile_theme_and_the_ones_it_lists() {
+    let (tmp, mut cfg) = setup();
+    write_snippet(tmp.path(), "mine.prompt", "export PS1='mine> '\n").unwrap();
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains("'fino') cat <<"), "the profile's own theme is always there");
+    assert!(!rc.contains("'minimal') cat <<") && !rc.contains("'mine.prompt') cat <<"), "{rc}");
+    cfg.toggle_theme("default", "minimal");
+    cfg.toggle_theme("default", "mine.prompt");
+    let rc = build_rc(tmp.path(), &cfg, "default");
+    assert!(rc.contains("'minimal') cat <<") && rc.contains("'mine.prompt') cat <<") && rc.contains("'fino') cat <<"));
+    assert_eq!(rc.matches("') cat <<").count(), 3, "{rc}");
+    cfg.toggle_theme("default", "minimal");
+    assert!(!build_rc(tmp.path(), &cfg, "default").contains("'minimal') cat <<"));
+    let text = toml::to_string(&cfg).unwrap();
+    assert!(text.contains("themes = [\"mine.prompt\"]"), "{text}");
+    cfg.toggle_theme("default", "mine.prompt");
+    assert!(!toml::to_string(&cfg).unwrap().contains("themes"), "an empty list is not written");
 }
 
 #[test]
@@ -643,6 +667,7 @@ fn run_in_rc_with(edit: impl FnOnce(&mut Config), before: &str, script: &str) ->
     }
     let (tmp, mut cfg) = setup();
     cfg.set_prompt("default", Some("fino"));
+    cfg.profiles.get_mut("default").unwrap().themes = prompt::THEMES.iter().map(|(n, _)| n.to_string()).collect();
     edit(&mut cfg);
     let rc = build_rc(tmp.path(), &cfg, "default");
     let _bash = crate::tests::testutil::bash_lock();

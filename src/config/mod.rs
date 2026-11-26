@@ -35,6 +35,10 @@ pub struct Profile {
     /// Built-in prompt theme (see `prompt::THEMES`). `None` keeps the server's own prompt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// Themes `sx-theme` can preview and switch to on the server, besides the profile's own. None
+    /// by default, since every theme sent adds to the payload.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub themes: Vec<String>,
     /// Sets the terminal's window title on the server. On unless the profile turns it off.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub title: bool,
@@ -45,7 +49,7 @@ pub struct Profile {
 
 impl Default for Profile {
     fn default() -> Self {
-        Profile { snippets: Vec::new(), prompt: None, title: true, marks: true }
+        Profile { snippets: Vec::new(), prompt: None, themes: Vec::new(), title: true, marks: true }
     }
 }
 
@@ -360,6 +364,17 @@ impl Config {
     pub fn set_prompt(&mut self, profile: &str, theme: Option<&str>) {
         if let Some(p) = self.profiles.get_mut(profile) {
             p.prompt = theme.map(String::from);
+        }
+    }
+
+    /// Adds a theme to the ones `sx-theme` offers for a profile, or removes it.
+    pub fn toggle_theme(&mut self, profile: &str, theme: &str) {
+        if let Some(p) = self.profiles.get_mut(profile) {
+            if let Some(i) = p.themes.iter().position(|t| t == theme) {
+                p.themes.remove(i);
+            } else {
+                p.themes.push(theme.to_string());
+            }
         }
     }
 

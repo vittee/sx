@@ -560,7 +560,7 @@ fn duplicate_profile_copies_snippets_and_prompt_and_selects_the_copy() {
     assert_eq!(app.cfg.default_profile, "default"); // the copy is not made default
     assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
     let screen = render(&mut app);
-    assert!(screen.contains("Payload") && screen.contains("(•) fino"), "{screen}");
+    assert!(screen.contains("Payload") && screen.contains("(•) [x] fino"), "{screen}");
 }
 
 #[test]
@@ -660,7 +660,7 @@ fn prompt_picker_lists_themes_with_preview() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Profiles);
     let screen = render(&mut app);
-    for s in ["Prompt","(server's own)", "minimal", "two-line", "timestamp", "(•) fino", "you at server"] {
+    for s in ["Prompt","(server's own)", "minimal", "two-line", "timestamp", "(•) [x] fino", "you at server"] {
         assert!(screen.contains(s), "missing {s:?}\n{screen}");
     }
 }
@@ -676,11 +676,11 @@ fn arrow_keys_choose_and_save_a_prompt() {
     key(&mut app, KeyCode::Down); // the default theme -> the next one: only a preview
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME), "moving does not apply");
     let screen = render(&mut app);
-    assert!(screen.contains(&format!("(•) {}", prompt::DEFAULT_THEME)) && screen.contains("Enter to use it"), "{screen}");
+    assert!(screen.contains(&format!("(•) [x] {}", prompt::DEFAULT_THEME)) && screen.contains("Enter to use it"), "{screen}");
     assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
     key(&mut app, KeyCode::Enter); // now it is saved
     assert_eq!(prompt_of(&app, "default").as_deref(), Some(next));
-    assert!(render(&mut app).contains(&format!("(•) {next}")));
+    assert!(render(&mut app).contains(&format!("(•) [x] {next}")));
     assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
     for _ in 0..prompt::THEMES.len() + 2 {
         key(&mut app, KeyCode::Down); // stops at the last theme
@@ -1030,7 +1030,7 @@ fn prompt_snippets_are_themes_not_snippets_to_send() {
     key(&mut app, KeyCode::Enter);
     assert_eq!(prompt_of(&app, "default").as_deref(), Some("mine.prompt"));
     let screen = render(&mut app);
-    assert!(screen.contains("(•) mine.prompt"), "listed and selected in the prompt picker: {screen}");
+    assert!(screen.contains("(•) [x] mine.prompt"), "listed and selected in the prompt picker: {screen}");
     assert!(screen.contains("mine"), "preview shows the user's theme: {screen}");
 }
 
@@ -2328,6 +2328,7 @@ fn double_clicking_a_prompt_snippet_opens_it_in_the_snippets_tab() {
     render(&mut app);
     let l = app.hits.prompt_list;
     let row = app.theme_names().iter().position(|n| n == "mine.prompt").unwrap() + 1;
+    app.prof_focus = ProfFocus::Prompt;
     app.prompt_cursor = Some(("default".into(), row)); // scrolls the list down to it
     render(&mut app);
     let y = l.y + (row - app.prompt_state.offset()) as u16;
@@ -2650,5 +2651,47 @@ fn the_preview_says_when_a_theme_needs_a_nerd_font() {
     let screen = render(&mut app);
     assert!(screen.contains("Requires Nerd Font"), "{screen}");
     assert!(screen.contains("https://github.com/ryanoasis/nerd-fonts#patched-fonts"), "the link is whole at 110 columns: {screen}");
+}
+
+#[test]
+fn space_adds_a_theme_to_sx_theme_and_enter_still_uses_it() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right); // focus the prompt picker
+    key(&mut app, KeyCode::Down); // fino -> the next theme, only a preview
+    let next = prompt::THEMES[prompt::THEMES.iter().position(|t| t.0 == prompt::DEFAULT_THEME).unwrap() + 1].0;
+    let listed = |app: &App| app.cfg.profiles["default"].themes.clone();
+    assert!(listed(&app).is_empty(), "no theme is listed by default");
+    key(&mut app, KeyCode::Char(' '));
+    assert_eq!(listed(&app), [next]);
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some(prompt::DEFAULT_THEME), "Space does not apply it");
+    assert!(squash(&render(&mut app)).contains(&format!("[x] {next}")));
+    assert!(render(&mut app).contains("(•) use [x] sx-theme"), "the Prompt box explains its two marks");
+    assert_eq!(Config::load(&app.dir).unwrap(), app.cfg);
+    key(&mut app, KeyCode::Char(' '));
+    assert!(listed(&app).is_empty(), "Space again removes it");
+    key(&mut app, KeyCode::Up); // back on the profile's own theme
+    key(&mut app, KeyCode::Char(' '));
+    assert!(listed(&app).is_empty(), "the profile's own theme is always sent, so it is not listed");
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(prompt_of(&app, "default").as_deref(), Some(next), "Enter uses it");
+}
+
+#[test]
+fn leaving_the_prompt_pane_or_the_page_drops_an_unapplied_preview() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Down); // a preview of the theme after fino
+    assert!(render(&mut app).contains("Enter to use it"));
+    key(&mut app, KeyCode::Left); // back to the profile list
+    assert!(!render(&mut app).contains("Enter to use it"), "the preview shows the theme in use again");
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Down);
+    app.switch_tab(Tab::Snippets);
+    app.switch_tab(Tab::Profiles);
+    key(&mut app, KeyCode::Right);
+    assert!(!render(&mut app).contains("Enter to use it"), "coming back starts on the theme in use");
 }
 

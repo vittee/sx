@@ -442,11 +442,16 @@ const TITLE_COMMAND: &str = r##"__sx_tc='d=$PWD;case $d in "$HOME"*) d="~${d#"$H
 
 /// Bash that defines `sx-theme`, which switches the prompt in a running session. `sx-theme` lists
 /// previews them, `sx-theme -l` lists the names and `sx-theme <name>` applies one. `sxt` is an
-/// alias for it. The built-in themes and your `.prompt` snippets are both in it, since the rc is sent once and the server has nothing to fetch them from later.
-fn theme_switcher(dir: &Path) -> String {
+/// alias for it. It holds the profile's own theme and the ones the profile lists (`wanted`),
+/// built-in or a `.prompt` snippet, since the rc is sent once and the server has nothing to fetch
+/// them from later. `None` when there is no theme at all.
+fn theme_switcher(dir: &Path, wanted: &[String], current: Option<&str>) -> Option<String> {
     let mut names: Vec<String> = prompt::THEMES.iter().map(|(n, _)| n.to_string()).collect();
     names.extend(list_snippets(dir).into_iter().filter(|n| is_prompt_snippet(n)));
-    names.retain(|n| !n.contains(['\'', ' ']));
+    names.retain(|n| !n.contains(['\'', ' ']) && (wanted.contains(n) || current == Some(n.as_str())));
+    if names.is_empty() {
+        return None;
+    }
     let mut out = String::from("__sx_theme_text() { case $1 in\n");
     let mut listed = Vec::new();
     for (i, name) in names.iter().enumerate() {
@@ -458,7 +463,7 @@ fn theme_switcher(dir: &Path) -> String {
     }
     out.push_str("*) return 1;; esac; }\n");
     out.push_str(&SWITCHER.replace("@LIST@", &listed.join(" ")).replace("@GIT@", prompt::GIT).replace("@RC@", prompt::RC));
-    out
+    Some(out)
 }
 
 /// The commands around the theme texts. `sx-theme` alone previews every theme: each one is run in a
@@ -469,53 +474,41 @@ fn theme_switcher(dir: &Path) -> String {
 /// first column.
 const SWITCHER: &str = r#"__sx_strip() { local s=$1 o=; while [[ $s == *$'\e['* ]]; do o+=${s%%$'\e['*}; s=${s#*$'\e['}; s=${s#*m}; done; REPLY=$o$s; }
 __sx_theme_show() {
-  local n p l r i j ci cols g d row pad nw=0 mw=0 H=1 gap=2 iw G='@GIT@' R='@RC@' W='~/app'
+  local n p l r i j k cols iw c d row nw=0 mw=0 H=1 G='@GIT@' R='@RC@'
   local -a names=() lines=()
-  local dim=$'\e[90m' bold=$'\e[1m' off=$'\e[0m'
+  local dim=$'\e[90m' off=$'\e[0m'
   if ! (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )) || [[ ${LC_ALL:-${LC_CTYPE:-$LANG}} != *[Uu][Tt][Ff]*8* ]]; then
     echo '@LIST@'; return
   fi
   for n in @LIST@; do
-    p=$( cd ~ 2>/dev/null; eval "$(__sx_theme_text "$n")"; PS1=${PS1//"$G"/ (main)}; PS1=${PS1//"$R"/ ✗1}; PS1=${PS1//\\u/you}; PS1=${PS1//\\[hH]/server}; PS1=${PS1//\\w/$W}; PS1=${PS1//\\W/app}; printf %s "${PS1@P}" )
+    p=$( cd ~ 2>/dev/null; eval "$(__sx_theme_text "$n")"; PS1=${PS1//"$G"/ (main)}; PS1=${PS1//"$R"/ ✗1}; PS1=${PS1//\\u/you}; PS1=${PS1//\\[hH]/server}; PS1=${PS1//\\w/'~/app'}; PS1=${PS1//\\W/app}; printf %s "${PS1@P}" )
     p=${p//[$'\001\002\r']/}
-    names+=("$n"); ci=$(( ${#names[@]} - 1 )); (( ${#n} > nw )) && nw=${#n}
+    names+=("$n"); k=$(( ${#names[@]} - 1 )); (( ${#n} > nw )) && nw=${#n}
     r=0
-    while IFS= read -r l; do
-      if (( r < 4 )); then
-        lines[ci * 4 + r]=$l; __sx_strip "$l"; (( ${#REPLY} > mw )) && mw=${#REPLY}
-        (( r + 1 > H )) && H=$(( r + 1 ))
-      fi
-      r=$(( r + 1 ))
+    while (( r < 4 )) && IFS= read -r l; do
+      lines[k * 4 + r]=$l; __sx_strip "$l"; (( ${#REPLY} > mw )) && mw=${#REPLY}
+      (( ++r > H )) && H=$r
     done <<<"$p"
   done
   iw=$(( mw + 2 )); (( nw + 3 > iw )) && iw=$(( nw + 3 ))
-  cols=${COLUMNS:-$(tput cols 2>/dev/null)}; cols=$(( (${cols:-80} + gap) / (iw + 2 + gap) ))
+  cols=${COLUMNS:-$(tput cols 2>/dev/null)}; cols=$(( (${cols:-80} + 2) / (iw + 4) ))
   (( cols < 1 )) && cols=1; (( cols > ${#names[@]} )) && cols=${#names[@]}
-  printf -v g '%*s' "$gap" ''
   for (( i = 0; i < ${#names[@]}; i += cols )); do
-    row=
-    for (( j = i; j < i + cols && j < ${#names[@]}; j++ )); do
-      n=${names[j]}; printf -v d '%*s' $(( iw - ${#n} - 3 )) ''; d=${d// /─}
-      [[ -n $row ]] && row+=$g
-      row+="${dim}┌─ ${off}${bold}${n}${off}${dim} ${d}┐${off}"
-    done
-    printf '%s\n' "$row"
-    for (( r = 0; r < H; r++ )); do
+    for (( r = -1; r <= H; r++ )); do
       row=
       for (( j = i; j < i + cols && j < ${#names[@]}; j++ )); do
-        l=${lines[j * 4 + r]}; __sx_strip "$l"; printf -v pad '%*s' $(( iw - 2 - ${#REPLY} )) ''
-        [[ -n $row ]] && row+=$g
-        row+="${dim}│${off} ${l}${off}${pad} ${dim}│${off}"
+        n=${names[j]}
+        if (( r < 0 )); then
+          printf -v d '%*s' $(( iw - ${#n} - 3 )) ''; c="${dim}┌─ ${off}"$'\e[1m'"${n}${off}${dim} ${d// /─}┐"
+        elif (( r == H )); then
+          printf -v d '%*s' "$iw" ''; c="${dim}└${d// /─}┘"
+        else
+          l=${lines[j * 4 + r]}; __sx_strip "$l"; printf -v d '%*s' $(( iw - 2 - ${#REPLY} )) ''; c="${dim}│${off} ${l}${off}${d} ${dim}│"
+        fi
+        row+=${row:+  }$c$off
       done
       printf '%s\n' "$row"
     done
-    row=
-    for (( j = i; j < i + cols && j < ${#names[@]}; j++ )); do
-      printf -v d '%*s' "$iw" ''; d=${d// /─}
-      [[ -n $row ]] && row+=$g
-      row+="${dim}└${d}┘${off}"
-    done
-    printf '%s\n' "$row"
   done
   printf '%sApply one with: sx-theme <name>%s\n' "$dim" "$off"
 }
@@ -685,8 +678,10 @@ fn build_rc_with(
         if !text.ends_with('\n') {
             out.push('\n');
         }
+    }
+    if let Some(switcher) = theme_switcher(dir, &p.themes, p.prompt.as_deref()) {
         out.push_str("# --- sx-theme ---\n");
-        out.push_str(&theme_switcher(dir));
+        out.push_str(&switcher);
     }
     let terminal = terminal_block(p.title, p.marks, env.is_some());
     if !terminal.is_empty() {

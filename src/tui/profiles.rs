@@ -39,12 +39,32 @@ impl App {
         theme.and_then(|t| names.iter().position(|n| *n == t)).map_or(0, |i| i + 1)
     }
 
-    /// The row you are looking at: the one you moved to, or else the profile's own prompt.
+    /// The row you are looking at: the one you moved to while the pane has focus, or else the
+    /// profile's own prompt. A pane you left shows the theme in use, since its selection is hidden.
     pub(super) fn prompt_cursor_row(&self) -> usize {
         match (&self.prompt_cursor, self.selected_profile()) {
-            (Some((p, i)), Some(sel)) if *p == sel => (*i).min(self.theme_names().len()),
+            (Some((p, i)), Some(sel)) if *p == sel && self.prof_focus == ProfFocus::Prompt => (*i).min(self.theme_names().len()),
             _ => self.prompt_index(),
         }
+    }
+
+    /// Whether `sx-theme` offers the theme of a prompt row (not 0) on the server: the profile's own
+    /// theme always, and the ones it lists.
+    fn theme_offered(&self, row: usize) -> bool {
+        let name = row.checked_sub(1).and_then(|t| self.theme_names().get(t).cloned());
+        let (Some(name), Some(p)) = (name, self.selected_profile().and_then(|p| self.cfg.profiles.get(&p))) else { return false };
+        p.prompt.as_deref() == Some(name.as_str()) || p.themes.contains(&name)
+    }
+
+    /// Adds the theme of a prompt row to what `sx-theme` offers on the server, or removes it.
+    pub(super) fn toggle_offered(&mut self, row: usize) {
+        let Some(profile) = self.selected_profile() else { return };
+        let Some(name) = row.checked_sub(1).and_then(|t| self.theme_names().get(t).cloned()) else { return };
+        if self.cfg.profiles.get(&profile).is_some_and(|p| p.prompt.as_deref() == Some(name.as_str())) {
+            return self.say("the profile's own theme is always in sx-theme".to_string());
+        }
+        self.cfg.toggle_theme(&profile, &name);
+        self.save_cfg();
     }
 
     /// Picks a prompt row for the selected profile and saves it.
@@ -226,7 +246,11 @@ impl App {
                     KeyCode::Up => self.move_prompt(-1),
                     KeyCode::Down => self.move_prompt(1),
                     KeyCode::Char('e') if ctrl => self.edit_prompt(),
-                    KeyCode::Enter | KeyCode::Char(' ') => self.apply_prompt(),
+                    KeyCode::Enter => self.apply_prompt(),
+                    KeyCode::Char(' ') => {
+                        let row = self.prompt_cursor_row();
+                        self.toggle_offered(row);
+                    }
                     KeyCode::Right if !self.grid_items().is_empty() => self.prof_focus = ProfFocus::Snippets,
                     KeyCode::Left | KeyCode::Esc => self.prof_focus = ProfFocus::List,
                     _ => {}
@@ -302,9 +326,11 @@ impl App {
         } else if inside(prompts, x, y) {
             let i = self.prompt_state.offset() + (y - prompts.y) as usize;
             if i <= self.theme_names().len() {
-                // the radio mark applies the row, the name only previews it
+                // the radio mark applies the row, the box adds it to `sx-theme`, the name only previews it
                 if x < prompts.x + 4 {
                     self.set_prompt_index(i);
+                } else if x < prompts.x + 8 {
+                    self.toggle_offered(i);
                 } else if let Some(profile) = self.selected_profile() {
                     self.prompt_cursor = Some((profile, i));
                     // a row far past the grid's indexes, so the two never count as one double click
@@ -470,6 +496,7 @@ impl App {
         let [pick_a, prev_a] = Layout::horizontal([Constraint::Length(27), Constraint::Min(10)]).areas(area);
         let block = Block::bordered()
             .title(" Prompt ")
+            .title_bottom(Line::styled(" (•) use [x] sx-theme ", Style::new().add_modifier(Modifier::DIM)))
             .border_style(Style::new().fg(border));
         let list_a = block.inner(pick_a);
         f.render_widget(block, pick_a);
@@ -483,8 +510,15 @@ impl App {
             .enumerate()
             .map(|(i, name)| {
                 let on = i == current;
+                let offered = self.theme_offered(i);
+                let (box_text, box_color) = match (i, offered) {
+                    (0, _) => ("    ", Color::Reset),
+                    (_, true) => ("[x] ", Color::Green),
+                    (_, false) => ("[ ] ", Color::DarkGray),
+                };
                 ListItem::new(Line::from(vec![
                     Span::styled(if on { "(•) " } else { "( ) " }, Style::new().fg(if on { Color::Green } else { Color::DarkGray })),
+                    Span::styled(box_text, Style::new().fg(box_color)),
                     Span::raw(name),
                 ]))
             })

@@ -59,6 +59,16 @@ Sleep 500ms
 
 Tab
 Sleep 1s
+# Tick a few themes for sx-theme to offer on the server, then go back to the profile's own.
+Right
+Down
+Space
+Down 3
+Space
+Down 5
+Space
+Up 9
+Sleep 500ms
 Screenshot screens/profiles.png
 Sleep 500ms
 
