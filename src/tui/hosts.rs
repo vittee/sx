@@ -391,7 +391,11 @@ impl App {
         if self.global_nav(k) {
             return;
         }
-        if select_key(&mut self.filter, k, false) {
+        let before = self.filter_text().to_string();
+        if common_key(&mut self.filter, k, false) {
+            if self.filter_text() != before {
+                self.host_state.select(Some(0));
+            }
             return;
         }
         let len = self.visible().len();

@@ -55,11 +55,20 @@ fn move_of(code: KeyCode, multiline: bool) -> Option<Move> {
     })
 }
 
-/// Selecting in a text box, the same in all of them: `Shift` with a move key extends the selection
-/// and `Ctrl-A` selects all. True when the key was one of these.
-fn select_key(e: &mut Editor, k: KeyEvent, multiline: bool) -> bool {
-    if k.code == KeyCode::Char('a') && k.modifiers.contains(KeyModifiers::CONTROL) {
-        e.select_all();
+/// The keys that every text box has: `Shift` with a move key extends the selection, `Ctrl-A` selects
+/// all, `Ctrl-Z` undoes and `Ctrl-Y` redoes. True when the key was one of these.
+fn common_key(e: &mut Editor, k: KeyEvent, multiline: bool) -> bool {
+    if k.modifiers.contains(KeyModifiers::CONTROL) {
+        match k.code {
+            KeyCode::Char('a') => e.select_all(),
+            KeyCode::Char('z') => {
+                e.undo();
+            }
+            KeyCode::Char('y') => {
+                e.redo();
+            }
+            _ => return false,
+        }
         return true;
     }
     match move_of(k.code, multiline) {
@@ -74,7 +83,7 @@ fn select_key(e: &mut Editor, k: KeyEvent, multiline: bool) -> bool {
 /// The keys of a one-line text box, the same in all of them: the cursor moves, selecting, typing
 /// and deleting. True when the key was one of these.
 fn edit_key(e: &mut Editor, k: KeyEvent) -> bool {
-    if select_key(e, k, false) {
+    if common_key(e, k, false) {
         return true;
     }
     match k.code {

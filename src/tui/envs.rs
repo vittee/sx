@@ -219,7 +219,11 @@ impl App {
 
     fn on_key_env_fields(&mut self, k: KeyEvent) {
         let text = is_text(self.env_field);
-        if text && select_key(&mut self.env_buf, k, false) {
+        let before = self.env_text().to_string();
+        if text && common_key(&mut self.env_buf, k, false) {
+            if self.env_text() != before {
+                self.apply_env_buf();
+            }
             return;
         }
         match k.code {

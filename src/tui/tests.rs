@@ -680,6 +680,54 @@ fn the_name_of_new_options_is_edited_like_other_text() {
 }
 
 #[test]
+fn ctrl_z_and_ctrl_y_undo_and_redo_in_every_text_box() {
+    let (_t, mut app) = app();
+    // the search box, and the list follows the text
+    typed(&mut app, "web");
+    ctrl(&mut app, 'z');
+    assert_eq!(app.filter_text(), "");
+    ctrl(&mut app, 'y');
+    assert_eq!(app.filter_text(), "web");
+    // the snippet editor
+    app.switch_tab(Tab::Snippets);
+    render(&mut app);
+    key(&mut app, KeyCode::Enter);
+    app.editor = crate::editor::Editor::from_text("one");
+    key(&mut app, KeyCode::End);
+    typed(&mut app, " two");
+    ctrl(&mut app, 'z');
+    assert_eq!(app.editor.lines[0], "one");
+    assert!(app.editor.dirty);
+    ctrl(&mut app, 'y');
+    assert_eq!(app.editor.lines[0], "one two");
+    // a text row of an environment is saved as it is undone
+    key(&mut app, KeyCode::Esc);
+    open_envs(&mut app);
+    ctrl(&mut app, 'n');
+    typed(&mut app, "qa");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter);
+    typed(&mut app, "Quality");
+    assert_eq!(app.cfg.envs["qa"].label, "Quality");
+    ctrl(&mut app, 'z');
+    assert_eq!(app.cfg.envs["qa"].label, "");
+    ctrl(&mut app, 'y');
+    assert_eq!(app.cfg.envs["qa"].label, "Quality");
+}
+
+#[test]
+fn the_options_form_undoes_a_field() {
+    let (_t, mut app) = app();
+    ctrl(&mut app, 'o');
+    key(&mut app, KeyCode::Tab);
+    typed(&mut app, "22");
+    ctrl(&mut app, 'z');
+    assert_eq!(form_text(&app, 1), "");
+    ctrl(&mut app, 'y');
+    assert_eq!(form_text(&app, 1), "22");
+}
+
+#[test]
 fn new_snippet_flow_and_validation() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);

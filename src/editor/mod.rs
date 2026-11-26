@@ -1,4 +1,4 @@
-//! Minimal multi-line text editor state for the snippet pane.
+//! Minimal multi-line text editor state, for the snippet pane and the one-line text boxes.
 
 #[derive(Default, Debug, Clone)]
 pub struct Editor {
@@ -12,7 +12,34 @@ pub struct Editor {
     pub dirty: bool,
     /// The other end of the selection. The cursor is the end that moves.
     pub anchor: Option<(usize, usize)>,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+    /// The kind of the last edit, when nothing but edits of that kind came since.
+    last: Edit,
 }
+
+/// The text and cursor at one point of the history.
+#[derive(Debug, Clone)]
+struct Snapshot {
+    lines: Vec<String>,
+    row: usize,
+    col: usize,
+}
+
+/// The kinds of edit. Typing, `Backspace` and `Delete` in a row each join into one undo step, and
+/// any other edit is a step of its own.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+enum Edit {
+    #[default]
+    None,
+    Insert,
+    Backspace,
+    Delete,
+    Other,
+}
+
+/// The most steps that `undo` keeps.
+const HISTORY: usize = 500;
 
 /// A cursor move. `Rows` moves by lines, `To` goes to a line and column.
 #[derive(Clone, Copy, Debug)]
@@ -75,13 +102,57 @@ impl Editor {
     }
 
     pub fn select_all(&mut self) {
+        self.last = Edit::None;
         self.anchor = Some((0, 0));
         self.row = self.lines.len() - 1;
         self.col = self.line_len();
     }
 
+    fn snapshot(&self) -> Snapshot {
+        Snapshot { lines: self.lines.clone(), row: self.row, col: self.col }
+    }
+
+    fn restore(&mut self, snap: Snapshot) {
+        (self.lines, self.row, self.col) = (snap.lines, snap.row, snap.col);
+        self.anchor = None;
+        self.last = Edit::None;
+        self.dirty = true;
+    }
+
+    /// Saves the text before an edit of `kind`. An edit of the same kind as the one before it joins that step.
+    fn record(&mut self, kind: Edit) {
+        if kind == self.last && kind != Edit::Other {
+            return;
+        }
+        if self.undo.len() == HISTORY {
+            self.undo.remove(0);
+        }
+        let snap = self.snapshot();
+        self.undo.push(snap);
+        self.redo.clear();
+        self.last = kind;
+    }
+
+    /// Undoes the last step. False when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        let Some(snap) = self.undo.pop() else { return false };
+        let now = self.snapshot();
+        self.redo.push(now);
+        self.restore(snap);
+        true
+    }
+
+    /// Redoes the step that `undo` took back. False when there is nothing to redo.
+    pub fn redo(&mut self) -> bool {
+        let Some(snap) = self.redo.pop() else { return false };
+        let now = self.snapshot();
+        self.undo.push(now);
+        self.restore(snap);
+        true
+    }
+
     /// Removes the selected text and puts the cursor where it was. False when nothing is selected.
-    pub fn delete_selection(&mut self) -> bool {
+    fn remove_selection(&mut self) -> bool {
         let Some(((r1, c1), (r2, c2))) = self.selection() else {
             self.anchor = None;
             return false;
@@ -97,8 +168,17 @@ impl Editor {
         true
     }
 
+    /// Removes the selected text. False when nothing is selected.
+    pub fn delete_selection(&mut self) -> bool {
+        if self.selection().is_some() {
+            self.record(Edit::Other);
+        }
+        self.remove_selection()
+    }
+
     pub fn insert_char(&mut self, c: char) {
-        self.delete_selection();
+        self.record(if self.selection().is_some() { Edit::Other } else { Edit::Insert });
+        self.remove_selection();
         let at = byte_idx(&self.lines[self.row], self.col);
         self.lines[self.row].insert(at, c);
         self.col += 1;
@@ -112,7 +192,8 @@ impl Editor {
     }
 
     pub fn newline(&mut self) {
-        self.delete_selection();
+        self.record(Edit::Other);
+        self.remove_selection();
         let at = byte_idx(&self.lines[self.row], self.col);
         let rest = self.lines[self.row].split_off(at);
         self.lines.insert(self.row + 1, rest);
@@ -125,17 +206,19 @@ impl Editor {
         if self.delete_selection() {
             return;
         }
+        if self.col == 0 && self.row == 0 {
+            return;
+        }
+        self.record(Edit::Backspace);
         if self.col > 0 {
             let at = byte_idx(&self.lines[self.row], self.col - 1);
             self.lines[self.row].remove(at);
             self.col -= 1;
-        } else if self.row > 0 {
+        } else {
             let cur = self.lines.remove(self.row);
             self.row -= 1;
             self.col = self.line_len();
             self.lines[self.row].push_str(&cur);
-        } else {
-            return;
         }
         self.dirty = true;
     }
@@ -144,14 +227,16 @@ impl Editor {
         if self.delete_selection() {
             return;
         }
+        if self.col >= self.line_len() && self.row + 1 >= self.lines.len() {
+            return;
+        }
+        self.record(Edit::Delete);
         if self.col < self.line_len() {
             let at = byte_idx(&self.lines[self.row], self.col);
             self.lines[self.row].remove(at);
-        } else if self.row + 1 < self.lines.len() {
+        } else {
             let next = self.lines.remove(self.row + 1);
             self.lines[self.row].push_str(&next);
-        } else {
-            return;
         }
         self.dirty = true;
     }
@@ -190,6 +275,7 @@ impl Editor {
 
     /// Moves the cursor and drops the selection. `Left` and `Right` on a selection go to its start or end.
     pub fn go(&mut self, mv: Move) {
+        self.last = Edit::None;
         match (self.selection(), mv) {
             (Some((start, _)), Move::Left) => (self.row, self.col) = start,
             (Some((_, end)), Move::Right) => (self.row, self.col) = end,
@@ -200,6 +286,7 @@ impl Editor {
 
     /// Moves the cursor and keeps the selection anchored where it started.
     pub fn extend(&mut self, mv: Move) {
+        self.last = Edit::None;
         let anchor = self.anchor.unwrap_or((self.row, self.col));
         self.step(mv);
         self.anchor = Some(anchor);

@@ -205,7 +205,7 @@ impl App {
 
     pub(super) fn on_key_editor(&mut self, k: KeyEvent, ctrl: bool) {
         let e = &mut self.editor;
-        if select_key(e, k, true) {
+        if common_key(e, k, true) {
             return;
         }
         match k.code {

@@ -198,3 +198,87 @@ ghi");
     e.drag(-1, -1);
     assert_eq!(e.selection(), Some(((0, 0), (0, 1))));
 }
+
+#[test]
+fn undo_takes_back_a_run_of_typing_as_one_step_and_redo_puts_it_back() {
+    let mut e = Editor::from_text("");
+    e.insert_str("hello");
+    e.go(Move::End);
+    e.insert_str(" world");
+    assert_eq!(e.lines, ["hello world"]);
+    assert!(e.undo());
+    assert_eq!(e.lines, ["hello"], "the typing after the move is one step");
+    assert_eq!(at(&e), (0, 5));
+    assert!(e.undo());
+    assert_eq!(e.lines, [""]);
+    assert!(!e.undo(), "nothing left to undo");
+    assert!(e.redo());
+    assert_eq!(e.lines, ["hello"]);
+    assert!(e.redo());
+    assert_eq!(e.lines, ["hello world"]);
+    assert_eq!(at(&e), (0, 11));
+    assert!(!e.redo());
+}
+
+#[test]
+fn a_new_edit_clears_what_could_be_redone() {
+    let mut e = Editor::from_text("");
+    e.insert_str("ab");
+    e.undo();
+    e.insert_char('c');
+    assert!(!e.redo());
+    assert_eq!(e.lines, ["c"]);
+}
+
+#[test]
+fn undo_covers_replacing_a_selection_joins_and_newlines() {
+    let mut e = Editor::from_text("abc\ndef");
+    e.select_all();
+    e.insert_char('x');
+    assert_eq!(e.lines, ["x"]);
+    e.undo();
+    assert_eq!(e.lines, ["abc", "def"], "replacing a selection is one step");
+    e.go(Move::To(0, 3));
+    e.delete();
+    assert_eq!(e.lines, ["abcdef"]);
+    e.undo();
+    assert_eq!(e.lines, ["abc", "def"]);
+    e.go(Move::To(1, 0));
+    e.backspace();
+    e.backspace();
+    assert_eq!(e.lines, ["abdef"]);
+    e.undo();
+    assert_eq!(e.lines, ["abc", "def"], "a run of backspaces is one step");
+    e.newline();
+    assert_eq!(e.lines, ["abc", "", "def"]);
+    e.undo();
+    assert_eq!(e.lines, ["abc", "def"]);
+}
+
+#[test]
+fn edits_that_change_nothing_leave_no_step() {
+    let mut e = Editor::from_text("a");
+    e.backspace();
+    e.go(Move::End);
+    e.delete();
+    assert!(!e.undo());
+    assert!(!e.dirty);
+}
+
+#[test]
+fn undo_marks_the_text_changed_and_keeps_the_history_bounded() {
+    let mut e = Editor::from_text("");
+    for i in 0..600 {
+        e.insert_char('a');
+        e.go(Move::Home);
+        e.go(Move::End);
+        assert_eq!(e.lines[0].len(), i + 1);
+    }
+    e.dirty = false;
+    let mut steps = 0;
+    while e.undo() {
+        steps += 1;
+    }
+    assert_eq!(steps, 500);
+    assert!(e.dirty);
+}
