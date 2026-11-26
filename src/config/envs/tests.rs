@@ -223,6 +223,28 @@ fn a_guarded_command_is_skipped_in_real_bash_and_the_others_run() {
 }
 
 #[test]
+fn the_guard_question_is_colored_so_it_stands_out() {
+    use std::io::Write;
+    if !crate::tests::testutil::bash_at_least(4, 1) {
+        return;
+    }
+    let _bash = crate::tests::testutil::bash_lock();
+    let dir = tempfile::tempdir().unwrap();
+    let tty = dir.path().join("tty");
+    let guard = guarded(&[FEATURE_GUARD], &["rm -r*"]).shell_guard();
+    let script = format!("__sx_guard_tty=tty
+{guard}
+rm -rf nothing
+");
+    let mut child = crate::tests::testutil::bash().current_dir(dir.path()).arg("--norc").stdin(std::process::Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+    child.wait().unwrap();
+    let shown = std::fs::read_to_string(&tty).unwrap();
+    assert!(shown.contains("\x1b[1;97;41m sx guard \x1b[0m \x1b[1;33mrm -rf nothing\x1b[0m"), "{shown:?}");
+    assert!(shown.contains("run it?") && shown.contains("(y/N)") && shown.contains("sx: skipped"), "{shown:?}");
+}
+
+#[test]
 fn a_hex_color_is_exact_on_a_truecolor_terminal_and_nearest_of_256_otherwise() {
     assert_eq!(badge_sgr("#ff8800", true).as_deref(), Some("1;30;48;2;255;136;0"));
     assert_eq!(badge_sgr("#102030", true).as_deref(), Some("1;97;48;2;16;32;48"));

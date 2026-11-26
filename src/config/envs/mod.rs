@@ -117,17 +117,18 @@ impl Env {
 }
 
 /// The bash behind [`Env::shell_guard`]. Our own hooks (`__sx_*`) are never asked about. Without a
-/// terminal to ask on, the answer is no. `__sx_guard_tty` names another terminal, for the tests.
+/// terminal to ask on, the answer is no. The question is colored: a red badge, the command in
+/// bold yellow. `__sx_guard_tty` names another terminal, for the tests.
 const GUARD_FUNCTION: &str = r#"__sx_guard() {
   local c=$BASH_COMMAND p a t=${__sx_guard_tty:-/dev/tty}
   case $c in __sx_*|'') return 0;; esac
   for p in "${__sx_guard_patterns[@]}"; do
     case $c in
       $p)
-        printf '\nsx guard: %s\nrun it? (y/N) ' "$c" >"$t" 2>/dev/null || return 1
+        printf '\n\e[1;97;41m sx guard \e[0m \e[1;33m%s\e[0m\n\e[1mrun it?\e[0m \e[2m(y/N)\e[0m ' "$c" >>"$t" 2>/dev/null || return 1
         read -r a <"$t" 2>/dev/null
         case $a in [yY]|[yY][eE][sS]) return 0;; esac
-        printf 'sx: skipped\n' >"$t" 2>/dev/null
+        printf '\e[2msx: skipped\e[0m\n' >>"$t" 2>/dev/null
         return 1;;
     esac
   done
