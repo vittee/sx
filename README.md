@@ -316,46 +316,50 @@ All of them are off. Enable the ones you want in Profiles.
 
 ### `sx-theme` (`sxt`)
 
-![sx-theme previews every theme on the server](demo/screens/sx-theme.png)
+![sx-theme previews the themes you chose on the server](demo/screens/sx-theme.png)
 
-To try another theme without reconnecting, run `sx-theme <name>` on the server.
+`sx-theme <name>` tries another theme without reconnecting.
 
-Running `sx-theme` without an argument previews every theme.
+`sx-theme` with no argument previews the themes it offers.
+These are the profile's own theme and the ones you tick with `Space` in the Prompt box of the Profiles page.
+`sx` sends no other theme, so each one you tick makes the payload bigger.
+A profile with no ticked theme offers only its own.
 
 `sx-theme -l` lists the names.
-
 A theme you pick lasts until you exit.
 
 ### `clip`
 
-`clip` on the server puts text in the clipboard of the machine you are sitting at.
-
-Use `clip some text`, or pipe into it: `cat ~/.ssh/id_ed25519.pub | clip`.
+`clip` puts text in the clipboard of the machine you are sitting at.
+Pass the text as arguments, or pipe it in: `cat ~/.ssh/id_ed25519.pub | clip`.
 
 Inside tmux, add `set -g set-clipboard on` to your tmux config.
 
 ### `sx-info`
 
-`sx-info` shows the `sx` version, the server, the environment and its guarded commands (when it has a guard), what `sx` set up in this shell (the profile, prompt theme and snippets), the bash version and the payload size (the compressed setup that `sx` sent).
-The names are colored when the output is a terminal, unless `NO_COLOR` is set.
+`sx-info` shows:
+
+- the `sx` version and the server
+- the environment and its guarded commands, when it has a guard
+- what `sx` set up in this shell: the profile, the prompt theme and the snippets
+- the bash version
+- the payload size, which is the compressed setup that `sx` sent
+
+`sx-info` colors the names when the output is a terminal, unless `NO_COLOR` is set.
 
 ### `sx-sudo`
 
 `sx-sudo [user]` opens a shell as that user, root by default, with your setup.
 
-**Why?**
-
 After `sudo -i` you are in root's own shell, with none of your prompt and aliases.
 
 ### `sx-tmux`
 
-**Why?**
+`sx-tmux` takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-tmux attach`.
 
-A window in plain `tmux` starts a bash that reads only the server's own files, so it has none of your prompt, aliases or `sx-*` commands.
-
-Use `sx-tmux` instead of `tmux` when you want your setup in every window.
-
-It takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-tmux attach`.
+A window in plain `tmux` starts a bash that reads only the server's own files.
+It has none of your prompt, aliases or `sx-*` commands.
+Use `sx-tmux` instead of `tmux` to get your setup in every window.
 
 > A tmux server that is already running keeps its own shells, so quit it first (`tmux kill-server`).
 
@@ -378,8 +382,8 @@ It takes the same arguments as `tmux`, for example `sx-tmux new -s work` or `sx-
 **Caveats**
 
 - A prompt that runs a bash function, such as one that shows the git branch, does not work in zsh.
-  A `$(...)` is kept as text and runs in zsh, where that function does not exist.
-- A `%` inside such a `$(...)` is doubled by the translation, so the command sees the wrong text.
+  The translation keeps a `$(...)` as text. It runs in zsh, where that function does not exist.
+- The translation doubles a `%` inside such a `$(...)`, so the command sees the wrong text.
 - An escape the translation does not know loses its backslash and stays as plain text.
 
 ## Environments
