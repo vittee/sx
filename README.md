@@ -184,44 +184,30 @@ The host name patterns of an environment suggest its tag in the host list.
 
 ## Configurations
 
-`sx` keeps its files in `$SX_HOME`, or `~/.config/sx` when that is not set:
+`sx` keeps its files in `$SX_HOME`, or `~/.config/sx` when it is not set:
 
-- `config.toml` holds the profiles (snippets and prompt theme), the default profile,
-  each host's profile, extra snippets and connection options, favorites and last-used times.  
-- `history.tsv` has one line per session (time, host, seconds, outcome), trimmed to the newest 1000.
-- `snippets/<name>.sh` holds the rc pieces.<br>
-  A host gets its profile's snippets, minus the ones it leaves out, plus its own extras, joined in name order,
-  so names like `10-prompt` and `20-aliases` control the order.<br>
-  A snippet in both places is sent once.
+- `config.toml` holds the profiles (snippets and prompt theme), the default profile, each host's profile,
+  extra snippets, connection options, favorites and last-used times.
+- `history.tsv` has one line per session (time, host, seconds, outcome). `sx` keeps the newest 1000.
+- `snippets/` holds the snippets.
 
-A snippet can start with a front matter block, which `sx` never sends to the server:
-
-```
----
-description: Colored ls and a few aliases
----
-alias ll='ls -l'
-```
-
-Profiles shows the `description` of the snippet under the cursor, on the bottom border of the Snippets box.<br>
-Other keys are ignored for now.<br>
-Without a front matter block, a first line that is a comment (`#`, or `"` in `.vim` files) is the description.
-
-The prompt theme goes after the snippets, so choosing one overrides any `PS1` a snippet sets.
-A fresh setup starts with the `fino` theme.
+A host gets its profile's snippets, minus the ones it leaves out, plus its own extras.
+`sx` sends each one once, in name order, so the file names control the order.
+The prompt theme comes after the snippets, so it overrides any `PS1` that a snippet sets.
+A new setup uses the `fino` theme.
 
 ## Snippet kinds
 
-A `.vim`, `.tmux` or `.inputrc` snippet is wrapped in shell that hands the text to the program
-without writing a file on the server.
+The file extension sets the kind of a snippet.
+`sx` passes `.vim`, `.tmux` and `.inputrc` snippets to the program through process substitution, so nothing is written on the server.
 
-| Name | Effect on the server | Built-in |
-|---|---|---|
-| `x.sh` (or just `x`) | Sourced as shell | [Shell presets](#shell-presets) |
-| `x.vim` | `vim` and `nvim` run with `-u` on this config, through process substitution.<br> All enabled `.vim` snippets are joined in name order, and a later name wins when two set the same option, so they work as layers | [Vim presets](#vim-presets) |
-| `x.tmux` | `tmux` runs with `-f` on this config, all enabled `.tmux` snippets joined in name order | |
-| `x.inputrc` | Changes the key bindings and settings of bash's line editor (readline) | [inputrc presets](#inputrc-presets) |
-| `x.prompt` | Prompt theme you can pick in Profiles | [Prompt themes](#prompt-themes) |
+| Name | Effect on the server |
+|---|---|
+| `x.sh` (or just `x`) | Sourced as shell |
+| `x.vim` | `vim` and `nvim` run with `-u` on this text. Enabled `.vim` snippets join in name order, and a later name wins |
+| `x.tmux` | `tmux` runs with `-f` on this text. Enabled `.tmux` snippets join in name order |
+| `x.inputrc` | Sets key bindings and settings of readline, the line editor of bash |
+| `x.prompt` | A prompt theme |
 
 ## Prompt themes
 
