@@ -421,22 +421,16 @@ It uses the bash `DEBUG` trap, so a `DEBUG` trap that the server's own rc sets s
 
 ## Terminal integration
 
-`sx` talks to your terminal in two ways, both on by default: the window title and the prompt marks.<br>
-A profile can turn each off, with a click in the Terminal box on the Profiles page, or in `config.toml`:
-
-```toml
-[profiles.default]
-title = false   # no window title
-marks = false   # no prompt marks
-```
+`sx` talks to your terminal in two ways: the window title and the prompt marks.
+Both are on by default.
+Turn each one off per profile, in the Terminal box on the Profiles page.
 
 The `[sx]` title on your own machine, while the TUI is open, is not affected.
 
 ### Window and tab title
 
 `sx` puts `[sx]` in the title of your terminal window or tab, so you can tell which one it is running in.
-
-For a host in an [environment](#environments) it also shows the environment, such as `[sx] PROD user@host: dir`.
+For a host with an environment, the title also shows the label of the environment.
 
 ### Prompt marks
 
@@ -451,14 +445,13 @@ The output and exit status marks need bash 4.4 or newer.
 
 - The server must run bash. zsh and fish rc files are not supported, `sx-zsh` only gives zsh your prompt.
 - If bash, `base64 -d` or `gunzip` is missing on the server,
-  you get the plain login shell and a one-line `sx:` message that gives the reason.
-- Payloads over about 24 KB (encoded) trigger a warning.
-- Hosts that appear only as hashed entries in `~/.ssh/known_hosts` are not listed.<br>
-  When `HashKnownHosts` is on (the default on some systems), ssh stores a host as `|1|salt|hash`
-  instead of its name, and a hash cannot be turned back into a name.<br>
-  Hosts from `~/.ssh/config` are always listed.<br>
-  To reach a hashed host, type its name in the search box and press Enter,
-  or add a `Host` entry for it in `~/.ssh/config`.
+  you get the plain login shell and a one-line message that gives the reason.
+- A payload over about 28 KB (encoded) triggers a warning.
+- Hosts that appear only as hashed entries in `~/.ssh/known_hosts` are not listed.
+  When `HashKnownHosts` is on (the default on some systems), ssh stores a host as `|1|salt|hash` instead of its name.
+  A hash cannot be turned back into a name.
+  Hosts from `~/.ssh/config` are always listed.
+  To reach a hashed host, type its name in the search box and press `Enter`, or add a `Host` entry for it in `~/.ssh/config`.
 
 ## Build
 
@@ -470,3 +463,5 @@ cargo test
 ## License
 
 [MIT](LICENSE)
+
+Some prompt themes are based on oh-my-zsh and oh-my-posh themes, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
