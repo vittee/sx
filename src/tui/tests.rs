@@ -566,6 +566,17 @@ fn a_click_at_a_delete_question_blinks_it_and_changes_nothing() {
 }
 
 #[test]
+fn a_status_message_disappears_after_a_few_seconds() {
+    let (_t, mut app) = app();
+    app.say("saved x");
+    assert!(render(&mut app).contains("saved x"));
+    app.status_at = Some(Instant::now() - Duration::from_secs(10));
+    assert!(!render(&mut app).contains("saved x"));
+    app.fail("cannot save x");
+    assert!(render(&mut app).contains("cannot save x"), "a new message shows again");
+}
+
+#[test]
 fn clicking_in_editor_focuses_and_places_cursor() {
     let (_t, mut app) = app();
     app.switch_tab(Tab::Snippets);

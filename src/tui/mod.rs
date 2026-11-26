@@ -98,6 +98,9 @@ fn edit_key(e: &mut Editor, k: KeyEvent) -> bool {
     true
 }
 
+/// How long a status message stays in the footer.
+const STATUS_SHOWN: Duration = Duration::from_secs(4);
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Tab {
     Hosts,
@@ -249,6 +252,8 @@ pub struct App {
     /// Mouse capture on. Off lets the terminal select text; toggled with F2.
     mouse: bool,
     status: Option<(String, bool)>,
+    /// When `status` was set. The footer stops showing it after `STATUS_SHOWN`.
+    status_at: Option<Instant>,
     quit: bool,
     hits: Hits,
     last_click: Option<(Instant, Tab, usize)>,
@@ -311,6 +316,7 @@ impl App {
             env_field: 0,
             env_buf: Editor::from_text(""),
             status: None,
+            status_at: None,
             quit: false,
             hits: Hits::default(),
             last_click: None,
@@ -340,10 +346,21 @@ impl App {
 
     fn say(&mut self, msg: impl Into<String>) {
         self.status = Some((msg.into(), false));
+        self.status_at = Some(Instant::now());
     }
 
     fn fail(&mut self, msg: impl Into<String>) {
         self.status = Some((msg.into(), true));
+        self.status_at = Some(Instant::now());
+    }
+
+    /// The status message, until it has been shown for `STATUS_SHOWN`.
+    fn shown_status(&self) -> Option<&(String, bool)> {
+        let at = self.status_at?;
+        if at.elapsed() > STATUS_SHOWN {
+            return None;
+        }
+        self.status.as_ref()
     }
 
     fn save_cfg(&mut self) {

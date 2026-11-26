@@ -51,11 +51,11 @@ impl App {
             Mode::HostSnippets(host) => {
                 Line::styled(format!(" Extra snippets for {host}, on top of its profile"), Style::new().fg(Color::Cyan))
             }
-            Mode::HostForm(_) | Mode::OptionsPicker(_) => match &self.status {
+            Mode::HostForm(_) | Mode::OptionsPicker(_) => match self.shown_status() {
                 Some((m, true)) => Line::styled(format!(" {m}"), Style::new().fg(Color::Red)),
                 _ => Line::raw(""),
             },
-            _ => match &self.status {
+            _ => match self.shown_status() {
                 Some((m, true)) => Line::styled(format!(" {m}"), Style::new().fg(Color::Red)),
                 Some((m, false)) => Line::styled(format!(" {m}"), Style::new().fg(Color::Green)),
                 None => Line::raw(""),
