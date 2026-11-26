@@ -467,6 +467,16 @@ fn esc_in_the_editor_asks_what_to_do_with_the_changes() {
     assert!(!term.backend().buffer()[(1, 28)].modifier.contains(Modifier::REVERSED), "and stops");
     assert!(render(&mut app).contains("Save? (y/n)"));
 
+    // a click blinks it too and does nothing else
+    app.flash = None;
+    let tab = app.hits.tabs[0];
+    click(&mut app, tab.x, tab.y);
+    assert!(app.flash.is_some() && matches!(app.mode, Mode::Confirm(Pending::Unsaved(_))));
+    assert_eq!(app.tab, Tab::Snippets);
+    app.flash = None;
+    mouse(&mut app, MouseEventKind::Moved, tab.x, tab.y);
+    assert!(app.flash.is_none(), "only a button press blinks");
+
     // Esc keeps editing
     key(&mut app, KeyCode::Esc);
     assert!(matches!(app.mode, Mode::Normal) && app.editor_focus && app.editor.dirty);
@@ -531,6 +541,21 @@ fn leaving_a_modified_snippet_by_the_list_a_tab_or_esc_asks_first() {
     assert!(!app.quit && matches!(app.mode, Mode::Confirm(Pending::Unsaved(After::Quit))));
     key(&mut app, KeyCode::Char('n'));
     assert!(app.quit);
+}
+
+#[test]
+fn a_click_at_a_delete_question_blinks_it_and_changes_nothing() {
+    let (_t, mut app) = app();
+    app.switch_tab(Tab::Snippets);
+    render(&mut app);
+    ctrl(&mut app, 'd');
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Snippet(_))));
+    assert!(app.flash.is_none());
+    let tab = app.hits.tabs[0];
+    click(&mut app, tab.x, tab.y);
+    assert!(app.flash.is_some());
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Snippet(_))));
+    assert_eq!(app.tab, Tab::Snippets);
 }
 
 #[test]

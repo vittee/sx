@@ -543,6 +543,13 @@ impl App {
 
     fn on_mouse(&mut self, m: MouseEvent) {
         let (x, y) = (m.column, m.row);
+        // A question is modal: a click is not an answer, so it blinks.
+        if matches!(self.mode, Mode::Confirm(_)) {
+            if matches!(m.kind, MouseEventKind::Down(_)) {
+                self.flash = Some(Instant::now());
+            }
+            return;
+        }
         if matches!(m.kind, MouseEventKind::Up(MouseButton::Left)) {
             self.text_drag = None;
         }

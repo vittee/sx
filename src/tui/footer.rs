@@ -5,6 +5,11 @@ use super::*;
 impl App {
     pub(super) fn draw_footer(&self, f: &mut Frame, area: Rect) {
         let [top, bottom] = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
+        let blink = self.flash.is_some_and(|t| t.elapsed() < Duration::from_millis(200));
+        let ask = |text: String| {
+            let style = Style::new().fg(Color::Yellow);
+            Line::styled(text, if blink { style.add_modifier(Modifier::REVERSED) } else { style })
+        };
         let first = match &self.mode {
             Mode::Input(kind, buf) => {
                 let label = match kind {
@@ -28,13 +33,11 @@ impl App {
             Mode::Confirm(Pending::Connect(args)) => {
                 let host = crate::host_arg(args);
                 let label = self.cfg.confirm_label(&host).unwrap_or_default();
-                Line::styled(format!(" Connect to {host} ({label})? (y/N)"), Style::new().fg(Color::Yellow))
+                ask(format!(" Connect to {host} ({label})? (y/N)"))
             }
             Mode::Confirm(Pending::Unsaved(_)) => {
                 let name = self.editor_name.as_deref().map(config::snippet_file).unwrap_or_default();
-                let blink = self.flash.is_some_and(|t| t.elapsed() < Duration::from_millis(200));
-                let style = Style::new().fg(Color::Yellow);
-                Line::styled(format!(" {name} has unsaved changes. Save? (y/n)"), if blink { style.add_modifier(Modifier::REVERSED) } else { style })
+                ask(format!(" {name} has unsaved changes. Save? (y/n)"))
             }
             Mode::Confirm(p) => {
                 let what = match p {
@@ -43,7 +46,7 @@ impl App {
                     Pending::Env(n) => format!("environment {n}"),
                     Pending::Connect(_) | Pending::Unsaved(_) => String::new(),
                 };
-                Line::styled(format!(" Delete {what}? (y/N)"), Style::new().fg(Color::Yellow))
+                ask(format!(" Delete {what}? (y/N)"))
             }
             Mode::HostSnippets(host) => {
                 Line::styled(format!(" Extra snippets for {host}, on top of its profile"), Style::new().fg(Color::Cyan))
