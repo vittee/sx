@@ -477,6 +477,13 @@ fn esc_in_the_editor_asks_what_to_do_with_the_changes() {
     mouse(&mut app, MouseEventKind::Moved, tab.x, tab.y);
     assert!(app.flash.is_none(), "only a button press blinks");
 
+    // Ctrl-C does not quit, it blinks the question
+    app.flash = None;
+    ctrl(&mut app, 'c');
+    assert!(!app.quit && app.flash.is_some());
+    assert!(matches!(app.mode, Mode::Confirm(Pending::Unsaved(_))));
+    assert!(app.editor.dirty, "nothing was saved");
+
     // Esc keeps editing
     key(&mut app, KeyCode::Esc);
     assert!(matches!(app.mode, Mode::Normal) && app.editor_focus && app.editor.dirty);

@@ -391,6 +391,11 @@ impl App {
     fn on_key(&mut self, k: KeyEvent) {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         if ctrl && k.code == KeyCode::Char('c') {
+            // The question about unsaved changes comes first: Ctrl-C is not an answer, so it blinks.
+            if matches!(self.mode, Mode::Confirm(Pending::Unsaved(_))) {
+                self.flash = Some(Instant::now());
+                return;
+            }
             self.flush_editor();
             self.quit = true;
             return;
