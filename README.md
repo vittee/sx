@@ -5,11 +5,9 @@ Use your own shell prompt and aliases on any server.
 `sx` is a wrapper around `ssh`. Use it like `ssh`: `sx user@host`.
 The remote bash then starts with your prompt and aliases.
 
-Nothing is installed or written on the server, and nothing is left behind when the session ends.
+`sx` installs and writes nothing on the server, and leaves nothing behind when the session ends.
 
-Details are under [How it works](#how-it-works).
-
-![sx in action: connect from the TUI, switch theme, then plain ssh next to sx](demo/sx.gif)
+![sx in action](demo/sx.gif)
 
 ## Contents
 
@@ -31,12 +29,12 @@ Details are under [How it works](#how-it-works).
 
 ## What you get
 
-- Your prompt and aliases on every server, from small snippet files you keep locally.
-- Your `vim`, `tmux` and readline (`inputrc`) settings on the server as well.
-- A terminal UI to browse hosts, edit snippets and see recent sessions for each host.
-- Built-in [snippet presets](#snippet-presets) and [prompt themes](#prompt-themes), ready to turn on. You can edit them or write your own.
+- Your prompt and aliases on every server.
+- Your `vim`, `tmux` and readline (`inputrc`) settings on the server too.
+- A terminal UI.
+- Built-in snippets and prompt themes. Edit them or write your own.
 - Profiles that group snippets and a prompt, assigned per host.
-- [Environments](#environments) such as `prod`: a colored badge in the prompt and the window title, a question before you connect, and a guard for dangerous commands.
+- Environments that tag a host with a badge, a confirmation before you connect, and a guard for commands.
 - The same arguments as `ssh`.
 
 Quick start:
@@ -47,7 +45,7 @@ sx user@host            # log in with your rc
 sx                      # or open the TUI
 ```
 
-Needs `ssh` on your `PATH` and bash on the server, see [Install](#install) and [Limitations](#limitations).
+`sx` needs `ssh` on your `PATH` and bash on the server.
 
 ## Install
 
@@ -63,10 +61,7 @@ Windows (PowerShell):
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/vittee/sx/releases/latest/download/sx-ssh-installer.ps1 | iex"
 ```
 
-Or download an archive from the [releases page](https://github.com/vittee/sx/releases),
-or build it yourself, see [Build](#build).
-
-For shell completion, see [Usage](#usage).
+You can also download an archive from the [releases page](https://github.com/vittee/sx/releases), or build `sx` yourself.
 
 `sx` runs the `ssh` it finds on your `PATH`.
 Linux and macOS ship it.
@@ -79,7 +74,7 @@ sx                                                                   # open the 
 sx [ssh args] <host>                                                 # like ssh, with your rc injected
 sx <host> --options <name>                                           # use the options named <name>, saved for the host (Ctrl-O in the TUI)
 sx --dry-run [ssh args] <host>                                       # print the ssh command, do not run it
-sx init [--presets]                                                  # create the snippet presets and the default profile, --presets adds the presets that are missing, switched off, and updates the older ones
+sx init [--presets]                                                  # create the snippet presets and the default profile, --presets adds the missing presets (off) and updates the older ones
 sx completions <bash|zsh|fish|powershell|nushell>                    # print a completion script
 sx completions --install [bash|zsh|fish|powershell|nushell] [--yes]  # set up shell completion (asks first)
 sx --version                                                         # print the sx version (ssh's -V shows the ssh one)
@@ -92,7 +87,7 @@ sx --version                                                         # print the
 - `-o RequestTTY=force`
 - `-o RemoteCommand=...` carries your rc, gzipped and base64-encoded, inside the command.<br>
   The command decodes it and starts `bash --rcfile <(...)`.<br>
-  The server's own `~/.bashrc` is sourced first, then yours.
+  The shell reads the server's own `~/.bashrc` first, then yours.
 
 While you are logged in, other users on the server can see the command in the process list,
 so do not put secrets in snippets.
