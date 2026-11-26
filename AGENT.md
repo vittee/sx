@@ -12,7 +12,8 @@ Nothing is written on the server. The README explains the mechanism, the config 
 - `src/ssh_config`: hosts from `~/.ssh/config` and `known_hosts`. It never writes there.
 - `src/tui`: ratatui screens. `hostedit.rs` is the options form, `hosts.rs` the host list, `envs.rs` the Envs page, `tests.rs` the UI tests.
 - `src/completions`: `sx completions` scripts for five shells and `--install`. `sx __complete` is hidden and used by the scripts.
-- `src/history`, `src/log`, `src/prompt`, `src/editor`, `src/highlight`: smaller pieces.
+- `src/editor`: `Editor`, the text box state: cursor, selection, undo and redo. Every text box in the TUI uses it.
+- `src/history`, `src/log`, `src/prompt`, `src/highlight`: smaller pieces.
 - `src/main/testutil.rs`: helpers for tests that start bash, see Conventions.
 
 ## Checks
@@ -35,6 +36,16 @@ Use `cargo check`, clippy and test, or build with `--target-dir` somewhere else.
 
 - ssh keeps the first value of an option. Options sx adds for a host go after what the user typed, so the user's win.
 - Saved connection options live in sx's `config.toml`, never in `~/.ssh/config`.
+- Every text box uses `Editor`, so all of them edit the same way. Do not edit a `String` with push and pop.
+  `common_key` and `edit_key` in `src/tui/mod.rs` handle the shared keys (move, `Shift` select, `Ctrl-A`, `Ctrl-Z`, `Ctrl-Y`, `Delete`),
+  and `TextDrag` routes a mouse drag to the box that was clicked.
+  A new box needs a click handler that sets `text_drag`, a selection drawn with `reversed_range`, and the terminal cursor.
+  The one-line prompts of `Mode::Input` are still a `String`.
+- A question (`Mode::Confirm`) is modal. A mouse press blinks it through `App.flash` and does nothing else.
+  The unsaved-changes question (`Pending::Unsaved`) also blinks on a key that is not an answer, and `Esc` keeps editing.
+  It also blocks `Ctrl-C`, which blinks it instead of quitting.
+- A status message (`say`, `fail`) shows for `STATUS_SHOWN`. Read it with `shown_status`, never `status` directly.
+- The Snippets editor does not autosave on `Esc`. Leaving with changes asks first, through `ask_unsaved`.
 - UI tests render a 110x30 `TestBackend`. Reuse the helpers at the top of `src/tui/tests.rs` (`app`, `render`, `key`, `ctrl`, `typed`, `click`, `squash`).
 - A test that starts bash uses `crate::tests::testutil::bash()` and holds `crate::tests::testutil::bash_lock()` while it runs.
   Git Bash flips the console mode on Windows, and parallel bash processes garble the terminal.
