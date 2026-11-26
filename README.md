@@ -142,6 +142,8 @@ You can also type a host that is not in the list, and connect to it directly.
 
 ![The connection options form, with the jump host picker open](demo/screens/options.png)
 
+In the connection options form, `Ctrl-Left` and `Ctrl-Right` switch between the named options of the host.
+
 When the terminal is tall enough, a history pane shows under the list.
 It shows the last five sessions of the selected host: when, how long, how it ended.
 
