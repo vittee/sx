@@ -275,6 +275,16 @@ It then shows in the theme list in Profiles.
 Run `sx-theme <name>` on the server to try a theme without reconnecting.
 It offers the profile's own theme and the themes you ticked for the profile in Profiles.
 
+### Job count
+
+When the shell has background jobs or stopped jobs, the prompt shows a down arrow and their number.
+This works with every theme, and it has no switch.
+The number counts both kinds, as `%j` does in zsh.
+It goes away when no job is left.
+
+The count sits right before the prompt symbol, next to the badge of an environment.
+A shell that did not get it from `sx`, for example the one that `sudo -i` starts, shows nothing.
+
 ## Snippet presets
 
 `sx init` creates the presets.

@@ -550,9 +550,9 @@ fn a_profile_can_turn_the_marks_off_and_keep_the_title() {
 }
 
 #[test]
-fn a_profile_with_both_switched_off_sends_no_terminal_integration() {
+fn a_profile_with_both_switched_off_sends_no_title_and_no_marks() {
     let rc = rc_with_switches(false, false);
-    assert!(!rc.contains("# --- title ---") && !rc.contains("__sx_title") && !rc.contains("133;"), "{rc}");
+    assert!(!rc.contains("__sx_tc='") && !rc.contains("133;"), "no title and no marks: {rc}");
 }
 
 #[test]
@@ -581,6 +581,30 @@ fn each_switch_works_in_a_real_bash() {
     assert!(!no_title.contains("TITLE") && no_title.contains("MARKS") && no_title.contains("status=1"), "{no_title}");
     let no_marks = run_in_rc_with(|c| c.profiles.get_mut("default").unwrap().marks = false, "", script).unwrap().0;
     assert!(no_marks.contains("TITLE") && !no_marks.contains("MARKS") && no_marks.contains("status=1"), "{no_marks}");
+}
+
+#[test]
+fn the_job_count_goes_in_the_prompt_before_the_symbol_whatever_the_switches_say() {
+    let rc = rc_with_switches(false, false);
+    assert!(rc.contains("__sx_env_badge=$__sx_env_badge'${__sx_jobs}'"), "{rc}");
+    assert!(rc.contains("set -- $(jobs -rp) $(jobs -sp)") && rc.contains("return $s; }"), "{rc}");
+    assert!(!rc.contains("133;") && !rc.contains(r"]0;"), "the other switches stay off: {rc}");
+}
+
+#[test]
+fn the_job_count_shows_the_jobs_of_the_shell_in_a_real_bash() {
+    if !bash_at_least(4, 4) {
+        return;
+    }
+    let script = "false; __sx_title; echo \"status=$?\"; t=${PS1@P}\n\
+        case $t in *'↓'*) echo EARLY;; esac\n\
+        sleep 30 & sleep 30 &\n\
+        __sx_title; t=${PS1@P}\n\
+        case $t in *'↓2 '*) echo TWO;; esac\n\
+        kill $(jobs -p); wait 2>/dev/null; __sx_title; t=${PS1@P}\n\
+        case $t in *'↓'*) echo LATE;; esac\n";
+    let on = run_in_rc_with(|_| {}, "", script).unwrap().0;
+    assert!(on.contains("status=1") && on.contains("TWO") && !on.contains("EARLY") && !on.contains("LATE"), "{on}");
 }
 
 #[test]

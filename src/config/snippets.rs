@@ -355,9 +355,16 @@ const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 [ -n \"$__sx_t0\" ] && command -v sx-theme >/dev/null && sx-theme \"$__sx_t0\" 2>/dev/null; unset __sx_t0\n";
 
 /// The server side of terminal integration, built from the profile's two switches: the window
-/// title (`title`) and the prompt marks (`marks`). `env` is true for a host with an environment,
-/// whose badge goes in the prompt whatever the switches say. With everything off there is
-/// nothing to send.
+/// title (`title`) and the prompt marks (`marks`). The badge of an environment goes in the prompt
+/// whatever the switches say.
+///
+/// The job count is always there, and has no switch. `__sx_title` counts the running and the stopped
+/// jobs of the shell before each prompt and sets `__sx_jobs` to a yellow `↓N` with a space after it,
+/// or to nothing when there are none.
+/// `${__sx_jobs}` goes in `PS1` with the badge, right before the prompt symbol. It is a variable and
+/// not a function, so a shell that did not inherit it (`sudo -i`) shows nothing. The color uses
+/// `\001` and `\002`, the marks that readline reads as "no width", since bash does not turn `\[`
+/// into them inside the value of a variable.
 ///
 /// The title: the terminal's window and tab title (OSC 0) is set to `[sx] user@host: dir` at every
 /// prompt, so it follows `cd` and a different connection. The code in `__sx_tc` prints the sequence.
@@ -376,10 +383,7 @@ const RESTORE_THEME: &str = "__sx_t0=${SX_THEME-}; unset SX_THEME\n\
 /// mark failed commands. `__sx_ps1` adds the marks to `PS1`, once, also after `sx-theme` replaced it.
 /// `__sx_title` (in `PROMPT_COMMAND`) sends `D`, calls `__sx_ps1`, and returns the status it got so
 /// `$?` is intact.
-fn terminal_block(title: bool, marks: bool, env: bool) -> String {
-    if !title && !marks && !env {
-        return String::new();
-    }
+fn terminal_block(title: bool, marks: bool) -> String {
     let mut out = String::new();
     if title {
         out.push_str(TITLE_COMMAND);
@@ -390,10 +394,9 @@ fn terminal_block(title: bool, marks: bool, env: bool) -> String {
     if marks {
         front.push_str(r#"case $PS1 in *'133;A'*) ;; *) PS1='\[\e]133;A\a\]'$PS1;; esac; "#);
     }
-    if env {
-        out.push_str(BADGE_FUNCTION);
-        front.push_str("__sx_badge; ");
-    }
+    out.push_str("__sx_env_badge=$__sx_env_badge'${__sx_jobs}'\n");
+    out.push_str(BADGE_FUNCTION);
+    front.push_str("__sx_badge; ");
     // The end of PS1: the title, then the B mark.
     let mut back = String::new();
     if title {
@@ -410,7 +413,7 @@ fn terminal_block(title: bool, marks: bool, env: bool) -> String {
     };
     out.push_str(&format!("__sx_ps1() {{ {front}{tail}}}\n"));
     let d_mark = if marks { r#"[ -n "$__sx_seen" ] && printf '\033]133;D;%s\a' "$s"; "# } else { "" };
-    out.push_str(&format!("__sx_title() {{ local s=$?; {d_mark}__sx_seen=1; __sx_ps1; return $s; }}\n"));
+    out.push_str(&format!("__sx_title() {{ local s=$?; {d_mark}{JOBS_COUNT}__sx_seen=1; __sx_ps1; return $s; }}\n"));
     if marks {
         out.push_str(r"case ${PS0-} in *'133;C'*) ;; *) PS0=${PS0-}'\e]133;C\a';; esac");
         out.push('\n');
@@ -441,6 +444,9 @@ pub(super) const BADGE_FUNCTION: &str = r#"__sx_badge() {
   PS1=$h$t$__sx_env_badge${PS1:${#h}}
 }
 "#;
+
+/// The part of `__sx_title` that sets `__sx_jobs`, see [`terminal_block`].
+const JOBS_COUNT: &str = r#"set -- $(jobs -rp) $(jobs -sp); __sx_jobs=; [ $# -gt 0 ] && __sx_jobs=$'\001\e[33m\002'"↓$# "$'\001\e[0m\002'; "#;
 
 /// Sets `__sx_tc`, the command that prints the window title: `[sx] user@host: dir`, with the
 /// environment's label before the user when the host has one.
@@ -690,10 +696,8 @@ fn build_rc_with(
         out.push_str("# --- sx-theme ---\n");
         out.push_str(&switcher);
     }
-    let terminal = terminal_block(p.title, p.marks, env.is_some());
-    if !terminal.is_empty() {
-        push_block(&mut out, "title", &format!("{}{terminal}", super::env_shell_vars(env, truecolor)));
-    }
+    let terminal = terminal_block(p.title, p.marks);
+    push_block(&mut out, "title", &format!("{}{terminal}", super::env_shell_vars(env, truecolor)));
     if let Some(guard) = env.map(|(_, e)| e.shell_guard()).filter(|g| !g.is_empty()) {
         push_block(&mut out, "guard", &guard);
     }
